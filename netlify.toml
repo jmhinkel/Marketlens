@@ -1,0 +1,26 @@
+[build]
+  # The browser assets are served straight from Netlify's CDN. There is no
+  # build step - the front end is plain HTML, CSS and JavaScript.
+  publish = "public"
+  functions = "netlify/functions"
+  command = "echo 'no build step'"
+
+[functions]
+  # ESM + bundling for the function, which imports the whole lib/ tree.
+  node_bundler = "esbuild"
+
+# Every API path, the login page and the logout endpoint run through the
+# Express app inside the function. The extra /api in the target is deliberate:
+# serverless-http strips the /.netlify/functions/api prefix, leaving Express
+# with the original /api/... path it expects.
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/api/api/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/login"
+  to = "/.netlify/functions/api/login"
+  status = 200
+  force = true
