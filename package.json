@@ -1,0 +1,14 @@
+{
+  "name": "market-lens",
+  "version": "1.0.0",
+  "description": "Chart formation analysis fused with a weighted macro factor model, per asset class",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.117.1",
+    "express": "^4.21.0"
+  }
+}

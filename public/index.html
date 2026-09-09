@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Market Lens</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="mark"></span>
+    <div>
+      <h1>Market Lens</h1>
+      <p>Chart formations weighted against an asset-specific macro model</p>
+    </div>
+  </div>
+  <div class="controls">
+    <div class="symbol-wrap">
+      <input id="symbol" type="text" placeholder="Symbol — HG=F, BTC-USD, AAPL" autocomplete="off" spellcheck="false" />
+      <div id="suggestions" class="suggestions" hidden></div>
+    </div>
+    <select id="timeframe"></select>
+    <button id="run" class="primary">Analyze</button>
+    <button id="lock" class="secondary" title="Sign out" hidden>Lock</button>
+  </div>
+</header>
+
+<div id="presets" class="presets">
+  <span>Try:</span>
+  <button data-sym="HG=F">Copper</button>
+  <button data-sym="BTC-USD">Bitcoin</button>
+  <button data-sym="GC=F">Gold</button>
+  <button data-sym="CL=F">Crude</button>
+  <button data-sym="SPY">S&amp;P 500</button>
+  <button data-sym="TLT">Long Treasuries</button>
+  <button data-sym="EURUSD=X">EUR/USD</button>
+  <button data-sym="ZC=F">Corn</button>
+</div>
+
+<main id="main" hidden>
+
+  <section class="verdict card">
+    <div class="verdict-head">
+      <div>
+        <h2 id="assetName">—</h2>
+        <p id="assetMeta" class="muted"></p>
+      </div>
+      <div class="price-block">
+        <div id="price" class="price">—</div>
+        <div id="priceChange" class="change"></div>
+      </div>
+    </div>
+
+    <div class="scores">
+      <div class="score-main">
+        <div class="score-label">Composite</div>
+        <div id="compositeScore" class="score-value">—</div>
+        <div id="compositeLabel" class="score-sub"></div>
+      </div>
+      <div class="score-bar-wrap">
+        <div class="score-bar"><div class="score-zero"></div><div id="scoreFill" class="score-fill"></div></div>
+        <div class="score-legend"><span>bearish</span><span>neutral</span><span>bullish</span></div>
+        <div class="split">
+          <div class="split-item"><span class="k">Technical</span><span id="techScore" class="v">—</span></div>
+          <div class="split-item"><span class="k">Macro</span><span id="macroScore" class="v">—</span></div>
+          <div class="split-item"><span class="k">Blend</span><span id="blendLabel" class="v">—</span></div>
+          <div class="split-item"><span class="k">Agreement</span><span id="alignment" class="v">—</span></div>
+        </div>
+      </div>
+    </div>
+    <div id="regimeRow" class="chips"></div>
+  </section>
+
+  <section class="card chart-card">
+    <div class="card-head">
+      <h3>Price structure</h3>
+      <div id="chartLegend" class="legend"></div>
+    </div>
+    <canvas id="chart"></canvas>
+    <div id="chartNote" class="muted small"></div>
+  </section>
+
+  <div class="grid">
+    <section class="card">
+      <div class="card-head"><h3>Chart formations</h3></div>
+      <div id="patterns"></div>
+      <div id="stalePatterns" class="stale"></div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h3>Macro factor weighting</h3>
+        <span id="profileTag" class="tag"></span>
+      </div>
+      <p id="profileThesis" class="thesis"></p>
+      <div id="factors"></div>
+      <p id="dataQuality" class="muted small"></p>
+    </section>
+  </div>
+
+  <div class="grid">
+    <section class="card">
+      <div class="card-head"><h3>Key levels</h3></div>
+      <div id="levels"></div>
+    </section>
+
+    <section class="card">
+      <div class="card-head"><h3>What drives the technical score</h3></div>
+      <div id="contributions"></div>
+    </section>
+  </div>
+
+  <section class="card">
+    <div class="card-head"><h3>What would change this read</h3></div>
+    <ul id="invalidation" class="invalidation"></ul>
+  </section>
+
+  <section class="card" id="coveredCard">
+    <div class="card-head">
+      <h3>Covered calls</h3>
+      <div class="cc-controls">
+        <select id="ccExpiry" hidden></select>
+        <span id="ccStamp" class="muted small"></span>
+      </div>
+    </div>
+    <div id="covered"></div>
+  </section>
+
+  <section class="card narrative-card">
+    <div class="card-head">
+      <h3>Written briefing</h3>
+      <button id="writeup" class="secondary">Generate</button>
+    </div>
+    <div class="ask-row">
+      <input id="question" type="text" placeholder="Optional: something specific to address (e.g. how would a China stimulus package change this?)" />
+    </div>
+    <div id="narrative" class="narrative"></div>
+  </section>
+
+  <p class="disclaimer">
+    Market Lens is an analysis tool. It does not provide personalised investment advice or account for your
+    circumstances, and its macro factor readings are derived from market prices rather than a live news feed.
+    Verify anything time-sensitive independently before acting on it.
+  </p>
+</main>
+
+<div id="status" class="status"></div>
+
+<script src="chart.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
