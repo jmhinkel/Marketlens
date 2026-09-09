@@ -22,7 +22,7 @@ if (fs.existsSync(envPath)) {
   }
 }
 
-const app = createApp();
+const app = createApp({ publicDir: path.join(here, 'public') });
 const port = Number(process.env.PORT) || 5178;
 
 app.listen(port, () => {
