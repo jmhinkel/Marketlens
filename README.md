@@ -5,6 +5,13 @@ factor model that is tuned per asset class — so copper is scored on Chinese
 industrial demand and the dollar, while bitcoin is scored on liquidity, real
 rates and ETF flow.
 
+> **This is a research and analysis tool, not investment advice.** It does not
+> know your circumstances, does not size positions, and does not recommend
+> trades. Its macro readings are derived from market prices rather than a live
+> news feed, and its options quotes are delayed. Nothing here is a solicitation
+> or an offer, and no output should be relied on without independent
+> verification. Use at your own risk.
+
 ```bash
 npm start
 ```
