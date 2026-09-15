@@ -630,6 +630,11 @@ function renderScan(d) {
       payoff worth the risk — not by how bullish or bearish the asset looks. A confirmed break that already ran
       several ATR past its trigger scores <em>lower</em> than one that just fired, because the entry is spent.
       Click any row for the full analysis. ${d.universeNote}
+      ${d.tooQuiet?.length
+        ? `<br><br><b>${d.tooQuiet.length} excluded as too quiet</b> — under ${d.minAtrPct}% average daily range,
+           where a measured move is smaller than the spread it costs to trade:
+           ${d.tooQuiet.map((q) => `${q.symbol} ${q.atrPct}%`).join(', ')}.`
+        : ''}
     </p>`;
 }
 
