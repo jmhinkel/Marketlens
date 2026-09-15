@@ -407,6 +407,10 @@ window.addEventListener('resize', () => {
     $('writeup').title = 'Set ANTHROPIC_API_KEY in .env to enable';
   }
 
+  $("scanUniverse").innerHTML = (config.universes || [])
+    .map((u) => `<option value="${u.id}">${u.label} (${u.size})</option>`)
+    .join("");
+
   if (config.auth) {
     $('lock').hidden = false;
     $('lock').addEventListener('click', async () => {
@@ -568,4 +572,90 @@ $('covered').addEventListener('click', (e) => {
   if (!b) return;
   $('symbol').value = b.dataset.proxy;
   analyze();
+});
+
+// ---------- opportunity scan ----------
+
+function setupScoreColor(s) {
+  if (s >= 75) return 'var(--bull)';
+  if (s >= 60) return 'var(--accent)';
+  if (s >= 45) return 'var(--warn)';
+  return 'var(--muted)';
+}
+
+function renderSetup(s) {
+  const long = s.direction === 'long';
+  const p = s.pattern;
+  const color = setupScoreColor(s.score);
+  const levels = p
+    ? `<div class="setup-levels">
+         <div><span class="k">${p.triggerLabel || 'trigger'}</span><span class="v">${fmt(p.trigger, 2)}</span></div>
+         <div><span class="k">target</span><span class="v">${fmt(p.target, 2)}</span></div>
+         <div><span class="k">invalidation</span><span class="v">${fmt(p.invalidation, 2)}</span></div>
+         <div><span class="k">r:r</span><span class="v">${p.riskReward ?? '—'}</span></div>
+       </div>`
+    : '';
+  return `
+    <div class="setup" data-sym="${s.symbol}">
+      <div class="setup-head">
+        <span class="setup-score" style="background:${color}22;color:${color}">${s.score}</span>
+        <span class="setup-sym">${s.symbol}</span>
+        <span class="setup-name">${s.name || ''}</span>
+        <span class="setup-px">${fmt(s.price, 2)}</span>
+      </div>
+      ${p ? `<div class="setup-pattern"><b>${p.name}</b> <span class="badge ${p.stage}">${p.stage}</span></div>` : ''}
+      ${levels}
+      <div class="setup-why${s.twoSided ? ' setup-flag' : ''}">${s.reasons.join(' · ')}</div>
+    </div>`;
+}
+
+function renderScan(d) {
+  $('scanMeta').textContent =
+    `${d.scanned} symbols · ${d.universeLabel} · ${(d.elapsedMs / 1000).toFixed(1)}s` +
+    (d.failed?.length ? ` · ${d.failed.length} unavailable` : '');
+
+  const col = (title, rows, cls) => `
+    <div class="scan-col ${cls}">
+      <h4>${title} <span>${rows.length ? `${rows.length} ranked` : 'nothing worth listing'}</span></h4>
+      ${rows.length ? rows.map(renderSetup).join('') : '<div class="empty">No setup in this direction cleared the bar.</div>'}
+    </div>`;
+
+  $('scanBody').innerHTML = `
+    <div class="scan-cols">
+      ${col('Best longs', d.longs, 'long')}
+      ${col('Best shorts', d.shorts, 'short')}
+    </div>
+    <p class="scan-foot">
+      Ranked by how tradeable the setup is right now — a defined trigger, a level that says you were wrong, and a
+      payoff worth the risk — not by how bullish or bearish the asset looks. A confirmed break that already ran
+      several ATR past its trigger scores <em>lower</em> than one that just fired, because the entry is spent.
+      Click any row for the full analysis. ${d.universeNote}
+    </p>`;
+}
+
+async function loadScan(universe) {
+  $('scanSection').hidden = false;
+  $('scanBody').innerHTML = '<div class="empty"><span class="spin"></span>Scanning for setups…</div>';
+  try {
+    const res = await fetch(`/api/scan?universe=${encodeURIComponent(universe)}&limit=6`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Scan failed');
+    renderScan(data);
+  } catch (err) {
+    $('scanBody').innerHTML = `<div class="empty" style="color:var(--bear)">${err.message}</div>`;
+  }
+}
+
+$('scanBtn').addEventListener('click', () => {
+  if (!$('scanSection').hidden) return ($('scanSection').hidden = true);
+  loadScan($('scanUniverse').value || 'core');
+});
+$('scanRefresh').addEventListener('click', () => loadScan($('scanUniverse').value || 'core'));
+$('scanUniverse').addEventListener('change', () => loadScan($('scanUniverse').value));
+$('scanBody').addEventListener('click', (e) => {
+  const row = e.target.closest('[data-sym]');
+  if (!row) return;
+  $('symbol').value = row.dataset.sym;
+  analyze();
+  document.getElementById('main').scrollIntoView({ behavior: 'smooth' });
 });

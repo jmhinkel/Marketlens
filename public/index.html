@@ -23,6 +23,7 @@
     </div>
     <select id="timeframe"></select>
     <button id="run" class="primary">Analyze</button>
+    <button id="scanBtn" class="secondary">Find setups</button>
     <button id="lock" class="secondary" title="Sign out" hidden>Lock</button>
   </div>
 </header>
@@ -38,6 +39,20 @@
   <button data-sym="EURUSD=X">EUR/USD</button>
   <button data-sym="ZC=F">Corn</button>
 </div>
+
+<section id="scanSection" class="scan-wrap" hidden>
+  <div class="card">
+    <div class="card-head">
+      <h3>Best setups right now</h3>
+      <div class="scan-controls">
+        <select id="scanUniverse"></select>
+        <button id="scanRefresh" class="secondary">Refresh</button>
+        <span id="scanMeta" class="muted small"></span>
+      </div>
+    </div>
+    <div id="scanBody"></div>
+  </div>
+</section>
 
 <main id="main" hidden>
 

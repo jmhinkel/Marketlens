@@ -95,11 +95,29 @@ For instruments with no listed options (futures, spot crypto), the panel maps to
 the liquid proxies people actually sell calls on - copper to FCX/COPX/CPER, gold to
 GLD/GDX - and one click re-runs the whole model against that underlying.
 
-**4. Composite.** Technical and macro scores are blended by timeframe. On a
+**4. Opportunity scan.** Ranks a universe by how tradeable the SETUP is right
+now, long and short - which is a different question from how bullish or bearish
+the asset looks. A strong trend with no defined entry is a poor setup; a coiled
+range with a formation one ATR from its trigger is a good one. Each candidate is
+scored on the formation and its confidence, how close price sits to the trigger,
+reward-to-risk, agreement with the swing structure, regime, and room to the next
+barrier - then nudged by the macro model.
+
+Two things it deliberately punishes: a confirmed break that already ran several
+ATR past its trigger scores *lower* than one that just fired, because the entry
+is spent and the stop sits far behind; and reward-to-risk below about 1.2:1 is a
+real drag rather than a rounding error. When a chart shows credible formations in
+both directions, only the stronger side is listed, flagged as two-sided.
+
+Runs in two stages for speed - a technical-only pass over the whole universe,
+then the full macro model on the finalists - which keeps a 28-symbol scan around
+two seconds and inside a serverless timeout.
+
+**5. Composite.** Technical and macro scores are blended by timeframe. On a
 5-minute chart macro carries 5%; on a monthly chart it carries 65%. Agreement
 between the two lenses is reported rather than averaged away.
 
-**5. Written briefing (Claude).** Optional. Every number is computed before
+**6. Written briefing (Claude).** Optional. Every number is computed before
 Claude sees it — the model explains the reading and adds named real-world
 context, explicitly flagged as background knowledge rather than live reporting.
 It is instructed never to invent a level.
@@ -199,6 +217,7 @@ lib/
   data/cboe.js         options chains with greeks, proxy map for unlisted assets
   options/vol.js       realised vol, IV/RV, expected move, historical breach
   options/covered.js   strike scoring, thesis conflict check, panel verdict
+  scan.js              universe definitions, setup scoring, long/short ranking
   ta/indicators.js     SMA/EMA/RSI/MACD/ATR/Bollinger/ADX/correlation/linreg
   ta/structure.js      pivots, swing structure, S/R, trendlines, channels, volume profile
   ta/patterns.js       formation detection, staleness filtering
