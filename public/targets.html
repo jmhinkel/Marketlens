@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Setup Targets — Market Lens</title>
+<style>
+  :root { --bg:#0b0e14; --panel:#121722; --panel2:#171d2a; --line:#232b3a; --text:#e4e8f0;
+          --muted:#8792a8; --accent:#5aa9ff; --bull:#2fbf83; --bear:#f0655d; --warn:#e0a458; }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+       font:15px/1.6 "Segoe UI",system-ui,-apple-system,sans-serif;padding:32px 20px 60px}
+  .wrap{max-width:1040px;margin:0 auto}
+  header{display:flex;align-items:center;gap:13px;flex-wrap:wrap}
+  .mark{width:34px;height:34px;border-radius:9px;flex:none;
+        background:conic-gradient(from 210deg,var(--accent),var(--bull),var(--warn),var(--accent))}
+  h1{margin:0;font-size:21px;font-weight:600;flex:1}
+  h2{font-size:13px;text-transform:uppercase;letter-spacing:.9px;margin:30px 0 12px}
+  h2.long{color:var(--bull)} h2.short{color:var(--bear)}
+  select,button{background:var(--panel2);border:1px solid var(--line);color:var(--text);
+       padding:7px 12px;border-radius:7px;font-size:13px;font-family:inherit;cursor:pointer}
+  button:hover,select:hover{border-color:var(--accent)}
+  .stamp{color:var(--muted);font-size:13px;margin:8px 0 22px 47px}
+  .disclaimer{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--warn);
+       border-radius:8px;padding:14px 17px;font-size:13.5px;color:var(--muted);line-height:1.65}
+  .disclaimer b{color:var(--text)}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;font-variant-numeric:tabular-nums}
+  th{text-align:right;font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;
+     color:var(--muted);font-weight:600;padding:7px 9px;border-bottom:1px solid var(--line);white-space:nowrap}
+  td{text-align:right;padding:10px 9px;border-bottom:1px solid var(--line);
+     font-family:ui-monospace,Consolas,monospace}
+  th.l,td.l{text-align:left} td.l{font-family:inherit}
+  .nm{display:block;color:var(--muted);font-size:11.5px;font-family:inherit}
+  .tgt{color:var(--accent);font-weight:600}
+  .up{color:var(--bull)} .dn{color:var(--bear)} .warn{color:var(--warn)}
+  .stage{display:inline-block;margin-left:7px;font-size:9.5px;text-transform:uppercase;
+         letter-spacing:.5px;padding:1px 6px;border-radius:3px;vertical-align:1px}
+  .stage.confirmed{background:rgba(90,169,255,.16);color:var(--accent)}
+  .stage.forming{background:rgba(224,164,88,.16);color:var(--warn)}
+  .notes{background:var(--panel);border:1px solid var(--line);border-radius:8px;
+         padding:16px 19px;margin-top:26px;font-size:13.5px;color:var(--muted)}
+  .notes h3{font-size:12px;text-transform:uppercase;letter-spacing:.8px;color:var(--text);margin:0 0 9px}
+  .notes ul{margin:0;padding-left:19px} .notes li{margin-bottom:7px}
+  footer{color:var(--muted);font-size:12px;margin-top:26px;line-height:1.7}
+  .msg{color:var(--muted);padding:30px 0;font-size:14px}
+  .spin{display:inline-block;width:12px;height:12px;margin-right:9px;border:2px solid var(--line);
+        border-top-color:var(--accent);border-radius:50%;animation:sp .7s linear infinite;vertical-align:-1px}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  @media(max-width:700px){ body{padding:20px 12px 40px} th,td{padding:7px 5px;font-size:12px} .nm{display:none} }
+</style>
+</head>
+<body><div class="wrap">
+
+<header>
+  <span class="mark"></span>
+  <h1>Setup Targets</h1>
+  <select id="uni"></select>
+  <button id="refresh">Refresh</button>
+</header>
+<p class="stamp" id="stamp">Loading…</p>
+
+<div class="disclaimer">
+  <b>This is not investment advice.</b> These are levels computed from chart geometry by an automated
+  model. They take no account of anyone's circumstances, objectives or risk tolerance, they are not a
+  recommendation or solicitation to buy or sell anything, and no one should act on them without doing
+  their own work. Targets are <b>measured moves</b> — the distance implied by the formation projected
+  from its trigger — not forecasts, and they carry no probability of being reached. Past price
+  structure does not predict future prices. Data is delayed and may be wrong.
+</div>
+
+<div id="body"><p class="msg"><span class="spin"></span>Scanning…</p></div>
+
+<footer>
+  Produced by Market Lens. Price history from Yahoo Finance; macro factors derived from market prices,
+  not a live news feed. Formations searched over the last 320 daily bars. This page re-scans every time
+  it is loaded, so the levels are current as of the timestamp above.
+</footer>
+
+</div>
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+const money = (v) => {
+  if (v == null || !Number.isFinite(v)) return '—';
+  const a = Math.abs(v);
+  const d = a >= 1000 ? 0 : a >= 100 ? 2 : a >= 1 ? 2 : 4;
+  return v.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+};
+
+function table(rows) {
+  if (!rows.length) return '<p class="msg">No setup in this direction cleared the bar.</p>';
+  return `<table><thead><tr>
+      <th class="l">Symbol</th><th>Price</th><th>Entry</th><th>Target</th><th>Stop</th>
+      <th>R:R</th><th>To target</th><th class="l">Formation</th>
+    </tr></thead><tbody>` +
+    rows.map((r) => {
+      const p = r.pattern;
+      const move = ((p.target - r.price) / r.price) * 100;
+      const thin = p.riskReward != null && p.riskReward < 1;
+      return `<tr>
+        <td class="l"><b>${esc(r.symbol)}</b><span class="nm">${esc((r.name || '').replace(/ ETF$/, ''))}</span></td>
+        <td>${money(r.price)}</td><td>${money(p.trigger)}</td>
+        <td class="tgt">${money(p.target)}</td><td>${money(p.invalidation)}</td>
+        <td class="${thin ? 'warn' : ''}">${p.riskReward ?? '—'}</td>
+        <td class="${move > 0 ? 'up' : 'dn'}">${move > 0 ? '+' : ''}${move.toFixed(1)}%</td>
+        <td class="l">${esc(p.name)}<span class="stage ${esc(p.stage)}">${esc(p.stage)}</span></td>
+      </tr>`;
+    }).join('') + '</tbody></table>';
+}
+
+function render(d) {
+  const longs = d.longs.filter((r) => r.pattern?.target != null);
+  const shorts = d.shorts.filter((r) => r.pattern?.target != null);
+  const thin = [...longs, ...shorts].filter((r) => r.pattern.riskReward != null && r.pattern.riskReward < 1).length;
+  const confirmedShorts = shorts.filter((r) => r.pattern.stage === 'confirmed').length;
+
+  $('stamp').textContent =
+    `${new Date(d.generatedAt).toLocaleString('en-US', { dateStyle: 'full', timeStyle: 'short' })}` +
+    ` · ${d.universeLabel} universe · ${d.scanned} symbols scanned · ${longs.length + shorts.length} setups`;
+
+  $('body').innerHTML =
+    `<h2 class="long">Longs</h2>${table(longs)}
+     <h2 class="short">Shorts</h2>${table(shorts)}
+     <div class="notes"><h3>How to read this</h3><ul>
+       <li><b>Entry</b> is the formation's trigger level, <b>Stop</b> is the level that invalidates it,
+           and <b>Target</b> is the measured move projected from the trigger.</li>
+       <li><b>Check the R:R column before the target column.</b>${
+         thin ? ` ${thin} of these carry reward-to-risk below 1 — the target is close and the invalidation
+                  is far, so the geometry does not pay well even if the direction is right.` : ''}</li>
+       <li><b>"Confirmed" means already triggered.</b>${
+         confirmedShorts ? ` ${confirmedShorts} of the shorts have already broken their level, so part of
+                             the move to target may be spent.` : ''}</li>
+       <li>Setups whose stop sits closer than 0.6 ATR to the entry are excluded — one day of normal range
+           would take them out, and the reward-to-risk they imply is arithmetic rather than real.</li>
+       ${d.tooQuiet?.length
+         ? `<li>${d.tooQuiet.length} instruments excluded as too quiet to trade (under ${d.minAtrPct}%
+             average daily range): ${d.tooQuiet.map((q) => esc(q.symbol)).join(', ')}.</li>` : ''}
+     </ul></div>`;
+}
+
+async function load() {
+  $('body').innerHTML = '<p class="msg"><span class="spin"></span>Scanning…</p>';
+  $('stamp').textContent = 'Loading…';
+  try {
+    const res = await fetch(`/api/scan?universe=${encodeURIComponent($('uni').value || 'core')}&limit=8`);
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error || 'Scan failed');
+    render(d);
+  } catch (err) {
+    $('body').innerHTML = `<p class="msg" style="color:var(--bear)">${esc(err.message)}</p>`;
+    $('stamp').textContent = '';
+  }
+}
+
+(async function boot() {
+  const params = new URLSearchParams(location.search);
+  try {
+    const cfg = await (await fetch('/api/config')).json();
+    $('uni').innerHTML = (cfg.universes || [])
+      .map((u) => `<option value="${esc(u.id)}">${esc(u.label)} (${u.size})</option>`).join('');
+  } catch {
+    $('uni').innerHTML = '<option value="core">Core</option>';
+  }
+  const want = params.get('universe');
+  if (want) $('uni').value = want;
+  $('uni').addEventListener('change', load);
+  $('refresh').addEventListener('click', load);
+  load();
+})();
+</script>
+</body></html>
