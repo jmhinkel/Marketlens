@@ -95,7 +95,29 @@ For instruments with no listed options (futures, spot crypto), the panel maps to
 the liquid proxies people actually sell calls on - copper to FCX/COPX/CPER, gold to
 GLD/GDX - and one click re-runs the whole model against that underlying.
 
-**4. Opportunity scan.** Ranks a universe by how tradeable the SETUP is right
+**4. Cash-secured puts.** The mirror of the covered-call panel, but three
+things invert rather than reflect, and the scoring turns on them:
+
+- **Structure inverts.** A call seller wants resistance below the strike; a put
+  seller wants *support above* it - clustered demand price has to break through
+  before the strike is threatened.
+- **The thesis check inverts.** A bullish formation argues *for* selling puts.
+  The trap case is a confirmed bearish formation projecting through the strike,
+  where you would be underwriting the exact decline the model is forecasting.
+- **Assignment starts a position rather than ending one.** So "is the effective
+  basis a price worth owning at" is a scored criterion, not a footnote - the
+  strike less premium is measured against support and the 200-day average.
+
+It also measures **put skew** - equidistant put IV against call IV. Equity puts
+usually carry a fear premium, and that spread is the reason put selling can
+out-earn call selling on the same name. SMH currently prices puts 5.1 vol points
+above equidistant calls; GDX is flat, so there is no downside premium advantage
+there.
+
+Returns are quoted on the cash actually committed (strike less premium), not on
+notional.
+
+**5. Opportunity scan.** Ranks a universe by how tradeable the SETUP is right
 now, long and short - which is a different question from how bullish or bearish
 the asset looks. A strong trend with no defined entry is a poor setup; a coiled
 range with a formation one ATR from its trigger is a good one. Each candidate is
@@ -113,11 +135,11 @@ Runs in two stages for speed - a technical-only pass over the whole universe,
 then the full macro model on the finalists - which keeps a 28-symbol scan around
 two seconds and inside a serverless timeout.
 
-**5. Composite.** Technical and macro scores are blended by timeframe. On a
+**6. Composite.** Technical and macro scores are blended by timeframe. On a
 5-minute chart macro carries 5%; on a monthly chart it carries 65%. Agreement
 between the two lenses is reported rather than averaged away.
 
-**6. Written briefing (Claude).** Optional. Every number is computed before
+**7. Written briefing (Claude).** Optional. Every number is computed before
 Claude sees it — the model explains the reading and adds named real-world
 context, explicitly flagged as background knowledge rather than live reporting.
 It is instructed never to invent a level.
@@ -216,7 +238,8 @@ lib/
   data/fred.js         FRED series + keyless Treasury curve fallback
   data/cboe.js         options chains with greeks, proxy map for unlisted assets
   options/vol.js       realised vol, IV/RV, expected move, historical breach
-  options/covered.js   strike scoring, thesis conflict check, panel verdict
+  options/covered.js   call strike scoring, thesis conflict check, panel verdict
+  options/puts.js      put strike scoring, assignment-basis test, skew read
   scan.js              universe definitions, setup scoring, long/short ranking
   ta/indicators.js     SMA/EMA/RSI/MACD/ATR/Bollinger/ADX/correlation/linreg
   ta/structure.js      pivots, swing structure, S/R, trendlines, channels, volume profile

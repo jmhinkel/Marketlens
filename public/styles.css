@@ -326,3 +326,7 @@ main[hidden] { display: none; }
 .setup-why { font-size: 11.5px; color: var(--muted); margin-top: 8px; line-height: 1.5; }
 .setup-flag { color: var(--warn); }
 .scan-foot { font-size: 11.5px; color: var(--muted); margin-top: 12px; line-height: 1.6; }
+
+/* if-assigned basis colouring on the put panel */
+.cc-table td.good { color: var(--bull); }
+.cc-table td.bad  { color: var(--warn); }

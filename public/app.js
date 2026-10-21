@@ -279,6 +279,7 @@ function render(a) {
   $('narrative').innerHTML = '';
   // Chain fetch runs behind the main render so the chart is never held up by it.
   loadCovered(a.symbol);
+  loadPuts(a.symbol);
 }
 
 // ---------- actions ----------
@@ -663,4 +664,134 @@ $('scanBody').addEventListener('click', (e) => {
   $('symbol').value = row.dataset.sym;
   analyze();
   document.getElementById('main').scrollIntoView({ behavior: 'smooth' });
+});
+
+// ---------- cash-secured puts ----------
+
+let putData = null;
+
+function renderPutProxies(d) {
+  $('putExpiry').hidden = true;
+  $('putStamp').textContent = '';
+  if (!d.proxies?.length) {
+    $('puts').innerHTML = `<div class="empty">${d.reason} ${d.hint || ''}</div>`;
+    return;
+  }
+  $('puts').innerHTML =
+    `<div class="empty" style="padding-bottom:12px">${d.reason} ${d.hint}</div>` +
+    `<div class="cc-proxy">${d.proxies
+      .map((p) => `<div class="p"><button data-proxy="${p.symbol}">${p.symbol}</button>
+         <span class="pn">${p.note}</span></div>`)
+      .join('')}</div>`;
+}
+
+function renderPuts(d) {
+  putData = d;
+  if (!d.available) return renderPutProxies(d);
+
+  const v = d.volatility;
+  const em = v.expectedMove;
+
+  $('putStamp').textContent = `${d.symbol} ${d.spot} · quotes delayed ~15 min`;
+  const sel = $('putExpiry');
+  sel.hidden = false;
+  sel.innerHTML = d.expiries
+    .map((e) => `<option value="${e.expiry}"${e.expiry === d.expiry.expiry ? ' selected' : ''}>${e.expiry} · ${e.dte}d</option>`)
+    .join('');
+
+  const gate = [
+    ['Implied vol', v.impliedVol == null ? '—' : `${v.impliedVol}%`],
+    ['Realized vol', v.realizedVol == null ? '—' : `${v.realizedVol}%`],
+    ['IV / RV', v.ratio == null ? '—' : v.ratio.toFixed(2)],
+    ['Expected move', em ? `±${em.oneSigmaPct.toFixed(1)}%` : '—'],
+  ];
+  if (d.skew) gate.push(['Put skew', `${d.skew.skewPoints > 0 ? '+' : ''}${d.skew.skewPoints} pts`]);
+  if (d.sma200) gate.push(['200-day avg', fmt(d.sma200, 2)]);
+
+  const rows = d.strikes
+    .map((s, i) => {
+      const sup = s.strongestSupport
+        ? `${s.supportCount}&nbsp;@&nbsp;${fmt(s.strongestSupport.price, 2)}`
+        : '—';
+      const br = s.historicalBreach ? `${s.historicalBreach.finishBeyond}%` : '—';
+      const basisCls = s.basisVs200 != null && s.basisVs200 < 0 ? 'good' : 'bad';
+      return `<tr class="${i === 0 ? 'pick' : ''}${s.aboveThesisFloor ? ' flagged' : ''}">
+        <td><span class="sc" style="background:${ccScoreColor(s.score)}22;color:${ccScoreColor(s.score)}">${s.score}</span></td>
+        <td>${fmt(s.strike, 2)}</td>
+        <td>${s.otmPct.toFixed(1)}%</td>
+        <td>${fmt(s.bid, 2)}</td>
+        <td>${s.annualised.toFixed(1)}%</td>
+        <td>${s.delta == null ? '—' : s.delta.toFixed(2)}</td>
+        <td>${s.sigmaDistance == null ? '—' : s.sigmaDistance.toFixed(2)}</td>
+        <td class="${basisCls}">${fmt(s.effectiveBasis, 2)}</td>
+        <td class="${basisCls}">${s.basisVs200 == null ? '—' : `${s.basisVs200 > 0 ? '+' : ''}${s.basisVs200}%`}</td>
+        <td>${sup}</td>
+        <td>${br}</td>
+      </tr>`;
+    })
+    .join('');
+
+  const top = d.strikes[0];
+  const why = top
+    ? `<div class="cc-why"><b>Why ${fmt(top.strike, 2)} ranks first</b>` +
+      top.components
+        .map(
+          (c) =>
+            `<span class="comp"><span class="pt" style="color:${c.points > 0 ? 'var(--bull)' : 'var(--bear)'}">${
+              c.points > 0 ? '+' : ''
+            }${c.points.toFixed(1)}</span> <b>${c.label}</b> — ${c.detail}</span>`
+        )
+        .join('') +
+      `</div>`
+    : '';
+
+  $('puts').innerHTML = `
+    <div class="cc-verdict ${d.verdict.verdict}">
+      <span class="vlabel">${d.verdict.verdict}</span>
+      <ul>${d.verdict.reasons.map((r) => `<li>${r}</li>`).join('')}</ul>
+    </div>
+    <div class="cc-gate">${gate
+      .map(([k, val]) => `<div class="g"><span class="gk">${k}</span><span class="gv">${val}</span></div>`)
+      .join('')}</div>
+    ${
+      d.strikes.length
+        ? `<table class="cc-table">
+      <thead><tr>
+        <th>Score</th><th>Strike</th><th>OTM</th><th>Bid</th><th>Ann.</th><th>Delta</th>
+        <th>σ</th><th>If assigned</th><th>vs 200d</th><th>Support above</th><th>Hist. breach</th>
+      </tr></thead><tbody>${rows}</tbody></table>${why}`
+        : '<div class="empty">No out-of-the-money put in this expiry pays enough to justify the collateral.</div>'
+    }
+    <p class="muted small" style="margin-bottom:0">
+      Premium is quoted at the bid and returns are on the cash actually tied up (strike less premium).
+      <b>If assigned</b> is the price you would end up owning at — the question a put seller is really
+      answering, since assignment starts a position rather than ending one. "Hist. breach" is how often
+      this underlying has historically fallen at least that far over a comparable window, pooled across
+      all regimes. Delayed quotes: use for strike selection, not execution.
+    </p>`;
+}
+
+async function loadPuts(symbol, expiry) {
+  $('puts').innerHTML = '<div class="empty"><span class="spin"></span>Pulling the put chain…</div>';
+  $('putExpiry').hidden = true;
+  $('putStamp').textContent = '';
+  try {
+    const url = `/api/puts?symbol=${encodeURIComponent(symbol)}${expiry ? `&expiry=${expiry}` : ''}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Request failed');
+    renderPuts(data);
+  } catch (err) {
+    $('puts').innerHTML = `<div class="empty" style="color:var(--bear)">${err.message}</div>`;
+  }
+}
+
+$('putExpiry').addEventListener('change', () => {
+  if (current) loadPuts(putData?.symbol || current.symbol, $('putExpiry').value);
+});
+$('puts').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-proxy]');
+  if (!b) return;
+  $('symbol').value = b.dataset.proxy;
+  analyze();
 });
