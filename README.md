@@ -117,7 +117,32 @@ there.
 Returns are quoted on the cash actually committed (strike less premium), not on
 notional.
 
-**5. Opportunity scan.** Ranks a universe by how tradeable the SETUP is right
+**5. Buying calls.** Not the covered-call panel with the sign flipped —
+premium buying and premium selling are different trades and nearly every test
+inverts:
+
+- **The volatility gate reverses.** A seller wants implied above realised; a
+  buyer wants it at or below. Paying 45 vol for an asset that delivers 30 means
+  being right on direction and still losing.
+- **You pay the ask**, not the bid. On a wide market that gap is the largest
+  single cost in the trade, so every number here is quoted off the ask.
+- **Time is the enemy.** Theta is shown as a daily percentage bleed, and a
+  formation that has not triggered yet is penalised — decay runs while you wait
+  for the thesis to even start.
+- **The target must clear the breakeven.** This is the test the rest of the app
+  uniquely enables: the chart engine already computes a measured move, so the
+  panel can ask whether the forecast move is even enough to pay for the option.
+  A negative "Target − BE" means the position loses while the thesis plays out
+  perfectly, which is the most common way a correct directional call still
+  loses money.
+
+Measured moves are geometry, not probability, so the credit for clearing the
+breakeven is discounted as the target drifts beyond what the option market
+prices as plausible — a flag pole projecting 3.7 standard deviations is not a
+basis for buying premium. A soberer **return at 1σ** column sits alongside the
+return at target.
+
+**6. Opportunity scan.** Ranks a universe by how tradeable the SETUP is right
 now, long and short - which is a different question from how bullish or bearish
 the asset looks. A strong trend with no defined entry is a poor setup; a coiled
 range with a formation one ATR from its trigger is a good one. Each candidate is
@@ -135,11 +160,11 @@ Runs in two stages for speed - a technical-only pass over the whole universe,
 then the full macro model on the finalists - which keeps a 28-symbol scan around
 two seconds and inside a serverless timeout.
 
-**6. Composite.** Technical and macro scores are blended by timeframe. On a
+**7. Composite.** Technical and macro scores are blended by timeframe. On a
 5-minute chart macro carries 5%; on a monthly chart it carries 65%. Agreement
 between the two lenses is reported rather than averaged away.
 
-**7. Written briefing (Claude).** Optional. Every number is computed before
+**8. Written briefing (Claude).** Optional. Every number is computed before
 Claude sees it — the model explains the reading and adds named real-world
 context, explicitly flagged as background knowledge rather than live reporting.
 It is instructed never to invent a level.
@@ -240,6 +265,7 @@ lib/
   options/vol.js       realised vol, IV/RV, expected move, historical breach
   options/covered.js   call strike scoring, thesis conflict check, panel verdict
   options/puts.js      put strike scoring, assignment-basis test, skew read
+  options/longcalls.js premium-buying: inverted vol gate, breakeven vs target
   scan.js              universe definitions, setup scoring, long/short ranking
   ta/indicators.js     SMA/EMA/RSI/MACD/ATR/Bollinger/ADX/correlation/linreg
   ta/structure.js      pivots, swing structure, S/R, trendlines, channels, volume profile

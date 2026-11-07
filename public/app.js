@@ -280,6 +280,7 @@ function render(a) {
   // Chain fetch runs behind the main render so the chart is never held up by it.
   loadCovered(a.symbol);
   loadPuts(a.symbol);
+  loadLongCalls(a.symbol);
 }
 
 // ---------- actions ----------
@@ -790,6 +791,135 @@ $('putExpiry').addEventListener('change', () => {
   if (current) loadPuts(putData?.symbol || current.symbol, $('putExpiry').value);
 });
 $('puts').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-proxy]');
+  if (!b) return;
+  $('symbol').value = b.dataset.proxy;
+  analyze();
+});
+
+// ---------- buying calls ----------
+
+let lcData = null;
+
+function renderLcProxies(d) {
+  $('lcExpiry').hidden = true;
+  $('lcStamp').textContent = '';
+  if (!d.proxies?.length) {
+    $('longcalls').innerHTML = `<div class="empty">${d.reason} ${d.hint || ''}</div>`;
+    return;
+  }
+  $('longcalls').innerHTML =
+    `<div class="empty" style="padding-bottom:12px">${d.reason} ${d.hint}</div>` +
+    `<div class="cc-proxy">${d.proxies
+      .map((p) => `<div class="p"><button data-proxy="${p.symbol}">${p.symbol}</button>
+         <span class="pn">${p.note}</span></div>`)
+      .join('')}</div>`;
+}
+
+function renderLongCalls(d) {
+  lcData = d;
+  if (!d.available) return renderLcProxies(d);
+
+  const v = d.volatility;
+  const em = v.expectedMove;
+
+  $('lcStamp').textContent = `${d.symbol} ${d.spot} · quotes delayed ~15 min`;
+  const sel = $('lcExpiry');
+  sel.hidden = false;
+  sel.innerHTML = d.expiries
+    .map((e) => `<option value="${e.expiry}"${e.expiry === d.expiry.expiry ? ' selected' : ''}>${e.expiry} · ${e.dte}d</option>`)
+    .join('');
+
+  // The gate reads the opposite way here, so label it for a buyer.
+  const ratioVerdict =
+    v.ratio == null ? '—' : v.ratio >= 1.25 ? 'expensive' : v.ratio >= 1.05 ? 'slightly rich' : 'cheap';
+  const gate = [
+    ['Implied vol', v.impliedVol == null ? '—' : `${v.impliedVol}%`],
+    ['Realized vol', v.realizedVol == null ? '—' : `${v.realizedVol}%`],
+    ['IV / RV — to a buyer', v.ratio == null ? '—' : `${v.ratio.toFixed(2)} · ${ratioVerdict}`],
+    ['Expected move', em ? `±${em.oneSigmaPct.toFixed(1)}%` : '—'],
+  ];
+  if (d.thesis?.target) gate.push(['Chart target', fmt(d.thesis.target, 2)]);
+
+  const rows = d.strikes
+    .map((s, i) => {
+      const clears = s.targetClears;
+      const clearsCls = clears == null ? '' : clears > 0 ? 'good' : 'bad';
+      return `<tr class="${i === 0 ? 'pick' : ''}${clears != null && clears <= 0 ? ' flagged' : ''}">
+        <td><span class="sc" style="background:${ccScoreColor(s.score)}22;color:${ccScoreColor(s.score)}">${s.score}</span></td>
+        <td>${fmt(s.strike, 2)}</td>
+        <td>${fmt(s.ask, 2)}</td>
+        <td>${fmt(s.breakeven, 2)}</td>
+        <td>${s.breakevenPct > 0 ? '+' : ''}${s.breakevenPct}%</td>
+        <td>${s.delta == null ? '—' : s.delta.toFixed(2)}</td>
+        <td class="bad">${s.thetaDayPct == null ? '—' : `${s.thetaDayPct}%`}</td>
+        <td class="${clearsCls}">${clears == null ? '—' : fmt(clears, 2)}</td>
+        <td class="${s.returnAtOneSigma > 0 ? 'good' : 'bad'}">${s.returnAtOneSigma == null ? '—' : `${s.returnAtOneSigma > 0 ? '+' : ''}${s.returnAtOneSigma}%`}</td>
+        <td>${s.returnAtTarget == null ? '—' : `${s.returnAtTarget > 0 ? '+' : ''}${s.returnAtTarget}%`}</td>
+        <td>${s.historicalOdds ? `${s.historicalOdds.finishBeyond}%` : '—'}</td>
+      </tr>`;
+    })
+    .join('');
+
+  const top = d.strikes[0];
+  const why = top
+    ? `<div class="cc-why"><b>Why ${fmt(top.strike, 2)} ranks first</b>` +
+      top.components
+        .map(
+          (c) =>
+            `<span class="comp"><span class="pt" style="color:${c.points > 0 ? 'var(--bull)' : 'var(--bear)'}">${
+              c.points > 0 ? '+' : ''
+            }${c.points.toFixed(1)}</span> <b>${c.label}</b> — ${c.detail}</span>`
+        )
+        .join('') +
+      `</div>`
+    : '';
+
+  $('longcalls').innerHTML = `
+    <div class="cc-verdict ${d.verdict.verdict}">
+      <span class="vlabel">${d.verdict.verdict}</span>
+      <ul>${d.verdict.reasons.map((r) => `<li>${r}</li>`).join('')}</ul>
+    </div>
+    <div class="cc-gate">${gate
+      .map(([k, val]) => `<div class="g"><span class="gk">${k}</span><span class="gv">${val}</span></div>`)
+      .join('')}</div>
+    ${
+      d.strikes.length
+        ? `<table class="cc-table">
+      <thead><tr>
+        <th>Score</th><th>Strike</th><th>Ask</th><th>Breakeven</th><th>BE move</th><th>Delta</th>
+        <th>Theta/day</th><th>Target − BE</th><th>At 1σ</th><th>At target</th><th>Hist. odds</th>
+      </tr></thead><tbody>${rows}</tbody></table>${why}`
+        : '<div class="empty">No contract on this expiry is worth buying on these inputs.</div>'
+    }
+    <p class="muted small" style="margin-bottom:0">
+      Priced at the <b>ask</b>, because that is what a buyer actually pays — quoting the mid flatters every
+      number here. <b>Target − BE</b> is the headroom between the breakeven and the chart engine's own
+      measured move: negative means the model's forecast does not get the position to profit, which is the
+      most common way a correct directional call still loses money. <b>At 1σ</b> is the more sober yardstick —
+      what the contract returns if the asset simply moves as much as the option market expects.
+    </p>`;
+}
+
+async function loadLongCalls(symbol, expiry) {
+  $('longcalls').innerHTML = '<div class="empty"><span class="spin"></span>Pricing the call chain…</div>';
+  $('lcExpiry').hidden = true;
+  $('lcStamp').textContent = '';
+  try {
+    const url = `/api/longcalls?symbol=${encodeURIComponent(symbol)}${expiry ? `&expiry=${expiry}` : ''}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Request failed');
+    renderLongCalls(data);
+  } catch (err) {
+    $('longcalls').innerHTML = `<div class="empty" style="color:var(--bear)">${err.message}</div>`;
+  }
+}
+
+$('lcExpiry').addEventListener('change', () => {
+  if (current) loadLongCalls(lcData?.symbol || current.symbol, $('lcExpiry').value);
+});
+$('longcalls').addEventListener('click', (e) => {
   const b = e.target.closest('[data-proxy]');
   if (!b) return;
   $('symbol').value = b.dataset.proxy;
