@@ -164,10 +164,20 @@ two seconds and inside a serverless timeout.
 5-minute chart macro carries 5%; on a monthly chart it carries 65%. Agreement
 between the two lenses is reported rather than averaged away.
 
-**8. Written briefing (Claude).** Optional. Every number is computed before
-Claude sees it — the model explains the reading and adds named real-world
-context, explicitly flagged as background knowledge rather than live reporting.
-It is instructed never to invent a level.
+**8. Written briefing (optional).** Every number is computed before the model
+sees it - it explains the reading and adds named real-world context, flagged as
+background knowledge rather than live reporting, and is instructed never to
+invent a level.
+
+Two providers are supported. Set `ANTHROPIC_API_KEY` for Claude, or
+`VENICE_API_KEY` for Venice (OpenAI-compatible, no SDK needed). With both set,
+`LLM_PROVIDER` picks. `VENICE_MODEL` defaults to `gemini-3-6-flash`, measured at
+roughly 30-45 seconds for a full briefing - the larger Venice models ran past
+two minutes, which is too slow for something a person waits on.
+
+The payload is rounded before it is sent. Handed a raw float a model will
+faithfully repeat it, and an early run quoted copper to fifteen decimal places
+while overrunning its token budget mid-section.
 
 ---
 

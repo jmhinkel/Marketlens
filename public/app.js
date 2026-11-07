@@ -314,7 +314,7 @@ async function writeup() {
   const btn = $('writeup');
   btn.disabled = true;
   btn.textContent = 'Writing…';
-  $('narrative').innerHTML = '<p class="muted"><span class="spin"></span>Claude is reading the analysis…</p>';
+  $('narrative').innerHTML = `<p class="muted"><span class="spin"></span>${config.llmProvider || 'The model'} is reading the analysis…</p>`;
   try {
     const res = await fetch('/api/narrative', {
       method: 'POST',
