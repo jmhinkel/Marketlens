@@ -226,6 +226,32 @@ they dig rather than as ordinary equities.
 
 ---
 
+## How much to trust the option scores
+
+The arithmetic is verified. An audit recomputes every derived figure
+independently from the raw chain - premium sourced from the bid when selling
+and the ask when buying, breakeven, collateral, annualised return, assignment
+basis, delta signs, breach direction - and all of it reconciles.
+
+**The weights are not validated.** They are hand-set from trading principles,
+never fitted to outcomes, and no backtest has been run. A sensitivity test
+re-scores each panel 400 times with every component weight jittered at random:
+
+| Panel | top pick survives +/-15% | survives +/-50% |
+|---|---|---|
+| Covered calls | 97% | 43% |
+| Cash-secured puts | 69% | 34% |
+| Buying calls | every strike ties | - |
+
+Read that as: the *region* is robust and the *single winner* often is not. The
+panels now flag strikes within 4 points of the top as a tied band rather than
+implying a ranking that the weights cannot support.
+
+The buying-calls panel is the weakest discriminator by design - its dominant
+terms (the volatility gate, target plausibility) are properties of the
+underlying, identical across every strike, so it answers "should I buy calls on
+this at all" far better than "which strike".
+
 ## Known limits
 
 These are real, and the UI states them rather than papering over them:

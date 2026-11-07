@@ -495,7 +495,7 @@ function renderCovered(d) {
         ? `${s.resistanceCount}&nbsp;@&nbsp;${fmt(s.strongestResistance.price)}`
         : '—';
       const br = s.historicalBreach ? `${s.historicalBreach.finishAbove}%` : '—';
-      return `<tr class="${i === 0 ? 'pick' : ''}${s.belowThesisCeiling ? ' flagged' : ''}">
+      return `<tr class="${i === 0 ? 'pick' : ''}${s.tiedWithBest ? ' tied' : ''}${s.belowThesisCeiling ? ' flagged' : ''}">
         <td><span class="sc" style="background:${ccScoreColor(s.score)}22;color:${ccScoreColor(s.score)}">${s.score}</span></td>
         <td>${fmt(s.strike, 2)}</td>
         <td>${s.moneyness.toFixed(1)}%</td>
@@ -716,7 +716,7 @@ function renderPuts(d) {
         : '—';
       const br = s.historicalBreach ? `${s.historicalBreach.finishBeyond}%` : '—';
       const basisCls = s.basisVs200 != null && s.basisVs200 < 0 ? 'good' : 'bad';
-      return `<tr class="${i === 0 ? 'pick' : ''}${s.aboveThesisFloor ? ' flagged' : ''}">
+      return `<tr class="${i === 0 ? 'pick' : ''}${s.tiedWithBest ? ' tied' : ''}${s.aboveThesisFloor ? ' flagged' : ''}">
         <td><span class="sc" style="background:${ccScoreColor(s.score)}22;color:${ccScoreColor(s.score)}">${s.score}</span></td>
         <td>${fmt(s.strike, 2)}</td>
         <td>${s.otmPct.toFixed(1)}%</td>
@@ -768,7 +768,7 @@ function renderPuts(d) {
       <b>If assigned</b> is the price you would end up owning at — the question a put seller is really
       answering, since assignment starts a position rather than ending one. "Hist. breach" is how often
       this underlying has historically fallen at least that far over a comparable window, pooled across
-      all regimes. Delayed quotes: use for strike selection, not execution.
+      all regimes. Delayed quotes: use for strike selection, not execution.${d.strikes[0]?.tiedCount > 1 ? `<br><br><b>${d.strikes[0].tiedCount} strikes are within 4 points of the top score</b> — treat them as a band rather than a ranking. The component weights are hand-set, not fitted to outcomes, and on a weight wobble of 15% the single top pick changes often enough that picking it over its neighbours is not supported.` : ''}
     </p>`;
 }
 
@@ -845,7 +845,7 @@ function renderLongCalls(d) {
     .map((s, i) => {
       const clears = s.targetClears;
       const clearsCls = clears == null ? '' : clears > 0 ? 'good' : 'bad';
-      return `<tr class="${i === 0 ? 'pick' : ''}${clears != null && clears <= 0 ? ' flagged' : ''}">
+      return `<tr class="${i === 0 ? 'pick' : ''}${s.tiedWithBest ? ' tied' : ''}${clears != null && clears <= 0 ? ' flagged' : ''}">
         <td><span class="sc" style="background:${ccScoreColor(s.score)}22;color:${ccScoreColor(s.score)}">${s.score}</span></td>
         <td>${fmt(s.strike, 2)}</td>
         <td>${fmt(s.ask, 2)}</td>
@@ -897,7 +897,7 @@ function renderLongCalls(d) {
       number here. <b>Target − BE</b> is the headroom between the breakeven and the chart engine's own
       measured move: negative means the model's forecast does not get the position to profit, which is the
       most common way a correct directional call still loses money. <b>At 1σ</b> is the more sober yardstick —
-      what the contract returns if the asset simply moves as much as the option market expects.
+      what the contract returns if the asset simply moves as much as the option market expects.${d.strikes[0]?.tiedCount > 1 ? `<br><br><b>${d.strikes[0].tiedCount} strikes are within 4 points of the top score</b> — treat them as a band rather than a ranking. The component weights are hand-set, not fitted to outcomes, and on a weight wobble of 15% the single top pick changes often enough that picking it over its neighbours is not supported.` : ''}
     </p>`;
 }
 

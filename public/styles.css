@@ -330,3 +330,6 @@ main[hidden] { display: none; }
 /* if-assigned basis colouring on the put panel */
 .cc-table td.good { color: var(--bull); }
 .cc-table td.bad  { color: var(--warn); }
+
+/* strikes statistically tied with the top pick */
+.cc-table tr.tied td { background: rgba(90,169,255,.045); }
