@@ -226,6 +226,43 @@ they dig rather than as ordinary equities.
 
 ---
 
+## Backtest result: the setup score does not predict direction
+
+`node tools/backtest-setups.mjs [universe] [horizonDays] [stepBars]`
+
+Walk-forward over ten years of the core universe. At each sampled bar the
+engine sees only the bars up to that point - the array is sliced before the
+analysis gets it, so lookahead is prevented structurally rather than by care -
+the setup is scored exactly as the live scanner scores it, and the forward
+return is recorded.
+
+The result, consistent across 5, 10 and 20 trading-day horizons:
+
+| Horizon | Long rank correlation | Top bucket (70+) | Unselected baseline |
+|---|---|---|---|
+| 5 days | +0.003 | -0.18% | +0.19% |
+| 10 days | -0.022 | +0.26% | +0.58% |
+| 20 days | -0.018 | +0.63% | +1.19% |
+
+**Rank correlation is indistinguishable from zero at every horizon, and the
+highest-scoring longs underperform an unselected entry.** Short setups lost
+money in every bucket, which is partly a ten-year bull sample, but the score
+does not order those outcomes either (rho -0.03).
+
+Two honest caveats, neither of which rescues the result. Sampling every 10
+bars with a 20-day horizon produces overlapping windows, so the effective
+sample is far smaller than the raw count and the error bars are wide. And the
+score was built to rank *tradeability* - a defined trigger, stop and target -
+while this test holds blindly for N days, ignoring both the stop and the
+target. A trigger/stop/target simulation is the fairer test and has not been
+run.
+
+What the finding does support: treat the scores as a **filter and a
+checklist**, not a forecast. They are good at catching things worth avoiding -
+implied vol below realised, a target that cannot clear the breakeven, a stop
+inside the spread, an entry already spent. There is no evidence they rank what
+will go up.
+
 ## How much to trust the option scores
 
 The arithmetic is verified. An audit recomputes every derived figure
