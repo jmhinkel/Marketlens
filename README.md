@@ -263,6 +263,46 @@ implied vol below realised, a target that cannot clear the breakeven, a stop
 inside the spread, an entry already spent. There is no evidence they rank what
 will go up.
 
+## The fair test: trigger, stop, target
+
+`node tools/backtest-trades.mjs [universe] [maxHoldBars] [maxWaitBars]`
+
+Trades the setup as specified instead of holding blindly: wait for the
+trigger, enter there, exit at the stop or the target, measure in R. One
+position per symbol at a time, so the trades are independent. Where intrabar
+order is unknowable the stop is assumed to have hit first, and entries fill at
+the trigger or the gap open - never the better of the two.
+
+| Score | Long expectancy | Long win% | Short expectancy | Short win% |
+|---|---|---|---|---|
+| < 40 | 0.130R | 84.7% | 0.056R | 76.6% |
+| 40-49 | 0.134R | 83.2% | 0.041R | 71.7% |
+| 50-59 | 0.133R | 69.6% | -0.155R | 56.6% |
+| 60-69 | 0.141R | 54.6% | 0.082R | 47.9% |
+| 70+ | **0.246R** | 38.0% | **-0.202R** | 26.1% |
+| all | 0.147R | 71.7% | -0.008R | 65.0% |
+
+Better news than the naive test, and still not an endorsement.
+
+**What the score actually selects is reward-to-risk geometry, not direction.**
+Win rate falls monotonically with score (84.7% to 38.0%) because a higher
+score means a wider target relative to the stop - easy to see in the stop-out
+column, which climbs from 13% to 60%. Expectancy is roughly flat across the
+first four buckets at about 0.13R.
+
+The one positive signal is the top long bucket at 0.246R, but n=237 and the
+variance of R is large enough that it overlaps the baseline; it is suggestive,
+not established. **Short setups are the clear negative: rank correlation
+-0.14, and the highest-scoring shorts lost 0.202R at a 26% win rate.** Treat a
+high short score as a reason for scepticism, not conviction.
+
+Two further qualifications. No costs are modelled - commission and slippage
+would consume a meaningful share of a 0.13R edge. And the sample is a decade
+that mostly went up, which flatters every long and punishes every short.
+
+One finding is actionable as it stands: entries on a **confirmed** break
+returned 0.090R against 0.054R for entries waiting on a trigger cross.
+
 ## How much to trust the option scores
 
 The arithmetic is verified. An audit recomputes every derived figure
