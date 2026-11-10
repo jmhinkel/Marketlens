@@ -160,11 +160,25 @@ Runs in two stages for speed - a technical-only pass over the whole universe,
 then the full macro model on the finalists - which keeps a 28-symbol scan around
 two seconds and inside a serverless timeout.
 
-**7. Composite.** Technical and macro scores are blended by timeframe. On a
+**7. Contract scanner.** The options counterpart to the opportunity scan, and
+built on the opposite principle. Where that one ranks chart setups with a
+weighted score, this one refuses to: it prices every liquid contract in a
+universe against the asset's own return distribution and ranks by expected
+value per dollar of capital - premium received minus what the contract is
+actually worth. Hard gates first (variance risk premium, liquidity, sample
+adequacy), ordering second.
+
+Unlike the setup score, the quantity underneath it has an observable
+counterpart, so it could be calibrated out of sample - and was, which caught
+two of its own design errors before shipping. It also carries the app's first
+earnings guard, read out of the chain's implied-volatility term structure
+rather than a calendar feed. Full account below.
+
+**8. Composite.** Technical and macro scores are blended by timeframe. On a
 5-minute chart macro carries 5%; on a monthly chart it carries 65%. Agreement
 between the two lenses is reported rather than averaged away.
 
-**8. Written briefing (optional).** Every number is computed before the model
+**9. Written briefing (optional).** Every number is computed before the model
 sees it - it explains the reading and adds named real-world context, flagged as
 background knowledge rather than live reporting, and is instructed never to
 invent a level.
@@ -329,6 +343,112 @@ terms (the volatility gate, target plausibility) are properties of the
 underlying, identical across every strike, so it answers "should I buy calls on
 this at all" far better than "which strike".
 
+## The contract scanner: expected value instead of a score
+
+`/api/opscan`, the **Find contracts** button. Hand-weighted scores are
+tolerable once you have picked a symbol and are reading the reasoning. They are
+not tolerable as a basis for ranking forty-four symbols against each other,
+because the errors compound instead of cancelling and nothing on screen says
+which comparisons are real. So this scanner never consults them.
+
+It ranks on one quantity with an observable counterpart: **premium received
+minus the contract's fair value**, where fair value is the expected payoff
+under the asset's own return distribution. Writers are credited at the bid and
+buyers charged the ask. Expressed per dollar of capital committed and
+annualised, that number is comparable across strikes, expiries, symbols and
+strategies - which no score ever was.
+
+Hard gates come first, because a condition that makes a trade bad regardless of
+everything else must not be tradeable against other factors the way a weighted
+sum allows: implied volatility must beat the forecast to write (or sit below it
+to buy), spreads under 15% and 50+ open interest, and enough independent
+observations beyond the strike to price it at all.
+
+### What the calibration test settled
+
+`node tools/validate-expectancy.mjs [universe] [dte] [stepBars]` walks history,
+builds each distribution from only the bars up to the decision date, and
+compares predicted P(finishing beyond the strike) against what happened. Three
+findings, two of which killed a design:
+
+**1. Current realised vol is a biased forecast.** Over 10,914 decision points
+forward vol arrived at 1.195x the current-vol blend, and 1.39x in the quietest
+quintile. Every IV-versus-RV screener that compares implied to *current*
+realised - including this app's own three panels - overstates the variance risk
+premium. Correcting it cut calibration error from 4.15 to 2.16 points.
+
+**2. The empirical distribution's fat tails are worth almost nothing.** Per
+strike it calibrates at 4.00 points against 4.20 for a plain lognormal at the
+same width. Ten years of pooled returns mixes calm and crisis regimes, and most
+of the resulting kurtosis is that mixing rather than a property of any one
+forward month. The real distribution is kept because it is marginally ahead and
+yields a CVaR measured from actual drawdowns - not because it prices better.
+
+**3. Drift is the dominant error term, by a factor of two.**
+
+| drift assumption | per-strike calibration error |
+|---|---|
+| zero | 4.00 pts |
+| risk-free, contemporaneous | 2.95 pts |
+| 8%/yr | 2.00 pts |
+| the sample's own realised drift | 1.37 pts (unattainable) |
+
+The risk-free rate is used. 8%/yr scores better only because the sample rose
+16%/yr, and adopting it would repeat the exact error the setup-score backtest
+already caught. The honest cost: in a rising market this **under-states** the
+chance a short call is breached, which is the optimistic direction for a call
+writer. The scanner says so on screen.
+
+### The volatility forecast
+
+`node tools/fit-volforecast.mjs` fits it, on the first half of each symbol's
+history, scored on the second. Three specifications, two rejected:
+
+| specification | out-of-sample MAE | cross-symbol bias spread |
+|---|---|---|
+| blend + flat multiplier | 6.67 | 0.341 |
+| full regression per symbol | 7.32 | 0.382 |
+| **shared log slope + per-symbol bias constant** | **6.17** | **0.170** |
+
+The flat multiplier failed in a diagnosable way: it pushed SPY's forecast 18%
+above reality and deleted SPY's variance risk premium, which hid the most
+reliable premium in the universe. Full per-symbol regressions overfit - the
+fitted slope collapsed to 0.36 on BTC, which is noise, not mean reversion.
+
+The bias *spread* is the number that matters for a scanner, more than accuracy:
+a forecast biased the same way everywhere still ranks correctly, while one
+biased differently per symbol invents premium on the names it runs cold on and
+hides it on the names it runs hot on.
+
+### The earnings guard, at last
+
+The volatility forecast is built from price history and cannot see a scheduled
+earnings date. When it cannot, implied vol sits far above the forecast and the
+model reports the gap as edge - and because the gap scales with the size of the
+event, **contaminated names sort to the top**. The first run of this scanner put
+NVDA first at a claimed 46% edge with earnings inside the tenor.
+
+Yahoo's earnings endpoint now requires a session crumb, so the event is read out
+of the chain instead. Forward implied variance between consecutive expiries
+isolates the volatility priced for just that interval, and an interval that
+spikes above the rest of the term is the market pointing at a date:
+
+```
+NVDA   2.52x   118.6% forward IV over 11-16 -> 11-18   (reports 11-18)
+AVGO   1.63x    78.5% forward IV over 12-04 -> 12-11   (reports ~12-10)
+SPY    1.21x
+TLT    1.06x
+```
+
+It flagged 2 of 11 single names, which is the right count rather than a miss:
+the other nine had already reported, so their next earnings falls outside the
+tenor. Flagged chains are held out of the ranking and listed separately with
+the window, not dropped - the premium is real, it is just not free.
+
+This catches event premium large enough to stand out of the term structure, not
+every scheduled event. Singles run a median kink of 1.27x and broad ETFs 1.16x,
+so the populations overlap and a small earnings premium passes through.
+
 ## Known limits
 
 These are real, and the UI states them rather than papering over them:
@@ -352,8 +472,15 @@ These are real, and the UI states them rather than papering over them:
 - **No per-symbol IV rank.** There is no free history of single-name implied vol.
   Asset-class context comes from VIX, GVZ and OVX instead, and IV/RV does the work
   IV rank usually does.
-- **No earnings or ex-dividend calendar yet.** Check both before selling a call
-  that spans either.
+- **No ex-dividend calendar.** Check it before selling a call that spans one.
+  Earnings are now caught by the term-structure detector in the contract
+  scanner, but only when the premium is large enough to show; the three
+  per-symbol panels have no such guard at all.
+- **The contract scanner's three panels and the scanner itself will disagree.**
+  That is intended. The panels compare implied volatility to *current* realised
+  vol, which the calibration test showed overstates the variance risk premium
+  by around 19%. The scanner uses the corrected forecast. Where they conflict,
+  the scanner has the measurement behind it.
 - Yahoo is an unofficial endpoint. It can rate-limit; the app caches for 15
   minutes (1 minute for intraday) to stay well inside its tolerance.
 
@@ -375,7 +502,11 @@ lib/
   data/yahoo.js        OHLCV, daily closes, symbol search
   data/fred.js         FRED series + keyless Treasury curve fallback
   data/cboe.js         options chains with greeks, proxy map for unlisted assets
-  options/vol.js       realised vol, IV/RV, expected move, historical breach
+  data/rates.js        short risk-free rate, the drift assumption for valuation
+  options/vol.js       realised vol, IV/RV, expected move, historical breach,
+                       fitted forward-vol forecast, term-structure event detector
+  options/expectancy.js  empirical fair value: distribution, EV, tail risk
+  options/opscan.js    contract scanner - hard gates, then EV ranking
   options/covered.js   call strike scoring, thesis conflict check, panel verdict
   options/puts.js      put strike scoring, assignment-basis test, skew read
   options/longcalls.js premium-buying: inverted vol gate, breakeven vs target
@@ -387,5 +518,9 @@ lib/
   macro/profiles.js    asset classification and per-class factor weights + signs
   macro/factors.js     factor readings from market and economic data
   macro/macro.js       correlation-adjusted weighting and macro score
+  tools/validate-expectancy.mjs  out-of-sample calibration of the valuer
+  tools/fit-volforecast.mjs      fits the forward-vol forecast, train/test split
+  tools/backtest-setups.mjs      walk-forward test of the setup score
+  tools/backtest-trades.mjs      trigger/stop/target simulation, results in R
 public/                UI, canvas chart with pattern overlays
 ```

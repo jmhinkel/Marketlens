@@ -413,6 +413,13 @@ window.addEventListener('resize', () => {
     .map((u) => `<option value="${u.id}">${u.label} (${u.size})</option>`)
     .join("");
 
+  $('opStrategy').innerHTML = (config.strategies || [])
+    .map((s) => `<option value="${s.id}">${s.label}</option>`)
+    .join('');
+  $('opUniverse').innerHTML = (config.optionUniverses || [])
+    .map((u) => `<option value="${u.id}">${u.label} (${u.size})</option>`)
+    .join('');
+
   if (config.auth) {
     $('lock').hidden = false;
     $('lock').addEventListener('click', async () => {
@@ -660,6 +667,168 @@ $('scanBtn').addEventListener('click', () => {
 $('scanRefresh').addEventListener('click', () => loadScan($('scanUniverse').value || 'core'));
 $('scanUniverse').addEventListener('change', () => loadScan($('scanUniverse').value));
 $('scanBody').addEventListener('click', (e) => {
+  const row = e.target.closest('[data-sym]');
+  if (!row) return;
+  $('symbol').value = row.dataset.sym;
+  analyze();
+  document.getElementById('main').scrollIntoView({ behavior: 'smooth' });
+});
+
+// ---------- options opportunity scan ----------
+//
+// Deliberately presented differently from the setup scan above. That one leads
+// with a score, because a chart setup has no natural unit. This one leads with
+// fair value against market price, because a contract does: the gap between
+// them IS the trade, and showing it as a score would throw away the one thing
+// that makes these comparable across symbols.
+
+function edgeColor(pct) {
+  if (pct >= 30) return 'var(--bull)';
+  if (pct >= 15) return 'var(--accent)';
+  if (pct >= 5) return 'var(--warn)';
+  return 'var(--muted)';
+}
+
+function renderContract(x, side) {
+  const b = x.best;
+  const writing = side === 'write';
+  const edge = writing ? b.edgePctOfPremium : b.edgePctOfCost;
+  const color = edgeColor(edge);
+
+  // The headline pair. Everything else on the card is support for this.
+  const valuation = `
+    <div class="oc-val">
+      <div class="oc-val-row">
+        <span class="k">market pays</span>
+        <span class="v big">${fmt(b.marketPremium, 2)}</span>
+      </div>
+      <div class="oc-val-row">
+        <span class="k">worth</span>
+        <span class="v">${fmt(b.fairValue, 2)}</span>
+      </div>
+      <div class="oc-val-row edge" style="color:${color}">
+        <span class="k">${writing ? 'edge' : 'underpriced by'}</span>
+        <span class="v">${signed(edge, 0)}%</span>
+      </div>
+    </div>`;
+
+  const metrics = writing
+    ? [
+        ['EV on capital', `${signed(b.evAnnualPct, 1)}%/yr`],
+        ['assignment odds', `${fmt(b.probITM, 1)}%`],
+        ['vs delta', b.deltaVsMeasured == null ? '—' : `${signed(b.deltaVsMeasured, 1)} pts`],
+        ['5% tail', `${fmt(b.cvar5PctCapital, 1)}%`],
+        ['raw yield', `${fmt(b.annualYieldPct, 1)}%/yr`],
+      ]
+    : [
+        ['chance of profit', `${fmt(b.probProfit, 1)}%`],
+        ['finishes ITM', `${fmt(b.probITM, 1)}%`],
+        ['breakeven', fmt(b.breakeven, 2)],
+        ['top 5% outcome', `+${fmt(b.upside5PctOfCost, 0)}%`],
+      ];
+
+  const event = x.eventRisk?.detected
+    ? `<div class="oc-event"><b>Event priced in ${x.eventRisk.window.from} → ${x.eventRisk.window.to}.</b>
+         The market wants ${fmt(x.eventRisk.window.forwardIv, 0)}% volatility for that stretch against
+         ${fmt(x.eventRisk.medianForwardIv, 0)}% across the rest of the term — ${x.eventRisk.ratio}x.
+         The forecast below is built from price history and cannot see whatever that is, so treat the
+         edge as payment for a known risk rather than a mispricing.</div>`
+    : '';
+
+  return `
+    <div class="oc" data-sym="${x.symbol}">
+      <div class="oc-head">
+        <span class="oc-sym">${x.symbol}</span>
+        <span class="oc-strike">${fmt(b.strike, 2)} ${b.kind}</span>
+        <span class="oc-exp">${x.expiry.expiry} · ${x.expiry.dte}d</span>
+        <span class="oc-spot">spot ${fmt(x.spot, 2)}</span>
+      </div>
+      ${valuation}
+      <div class="oc-grid">
+        ${metrics.map(([k, v]) => `<div><span class="k">${k}</span><span class="v">${v}</span></div>`).join('')}
+      </div>
+      <div class="oc-vol">
+        implied <b>${fmt(x.iv, 1)}%</b> against a <b>${fmt(x.rvForecast, 1)}%</b> forecast
+        (<b>${x.ivRatio}x</b>) · ${b.spreadPct}% spread, ${b.openInterest.toLocaleString()} open interest
+        ${x.context?.structure ? ` · chart is ${x.context.structure}` : ''}
+      </div>
+      ${event}
+    </div>`;
+}
+
+function renderOpscan(d) {
+  $('opMeta').textContent =
+    `${d.scanned} symbols · ${d.passed} with positive edge · ${(d.elapsedMs / 1000).toFixed(1)}s`;
+
+  const list = (rows) =>
+    rows.length
+      ? rows.map((x) => renderContract(x, d.side)).join('')
+      : '<div class="empty">Nothing in this universe clears the gates right now. The reasons are listed below — that is a real answer, not a failure.</div>';
+
+  const events = d.eventPremium?.length
+    ? `<div class="oc-held">
+         <h4>Held back — event premium ${d.heldForEvents > 1 ? `(${d.heldForEvents})` : ''}</h4>
+         <p class="muted small">These show the largest apparent edge in the scan, and that is exactly why they are
+           not in the table above. Their implied volatility is high because the market has priced a dated event the
+           volatility forecast cannot see, so the model reads the event premium as mispricing. The premium is real;
+           it is not free. Shown with the window so the call is yours.</p>
+         ${d.eventPremium.map((x) => renderContract(x, d.side)).join('')}
+       </div>`
+    : '';
+
+  // Why a symbol is absent is as useful as why one is present, so the full
+  // screening record is kept rather than summarised away.
+  const screened = d.screened?.length
+    ? `<details class="oc-screened">
+         <summary>${d.screened.length} symbols screened out — reasons</summary>
+         <ul>${d.screened.map((s) => `<li><b>${s.symbol}</b> ${s.reason}</li>`).join('')}</ul>
+       </details>`
+    : '';
+
+  $('opscanBody').innerHTML = `
+    <p class="oc-intro">
+      ${d.strategyBlurb} Ranked by <b>measured expected value</b>, not by the strike scores in the panels below —
+      those are hand-weighted and unvalidated, which is tolerable once you have picked a symbol and are reading the
+      reasoning, and not tolerable as a basis for ranking ${d.scanned} of them against each other.
+      Fair value comes from this asset's own return distribution, scaled to a volatility forecast that was
+      calibrated out of sample, with drift set to the ${d.riskFree.annualPct}% risk-free rate.
+    </p>
+    <div class="oc-list">${list(d.results)}</div>
+    ${events}
+    <p class="scan-foot">
+      <b>What would make this wrong.</b> ${d.caveat}
+      The volatility forecast is unconditional on events, so the term-structure check above is the only earnings
+      guard and it catches event premium large enough to stand out of the term structure, not every scheduled
+      event. Expected value is an average: a contract with a positive edge still loses most of the time it is
+      breached, which is what the tail column is for. ${d.universeNote}
+      ${screened}
+    </p>`;
+}
+
+async function loadOpscan(strategy, universe) {
+  $('opscanSection').hidden = false;
+  $('opscanBody').innerHTML = '<div class="empty"><span class="spin"></span>Pricing every liquid contract against its own history…</div>';
+  try {
+    const res = await fetch(
+      `/api/opscan?strategy=${encodeURIComponent(strategy)}&universe=${encodeURIComponent(universe)}&limit=8`
+    );
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Scan failed');
+    renderOpscan(data);
+  } catch (err) {
+    $('opscanBody').innerHTML = `<div class="empty" style="color:var(--bear)">${err.message}</div>`;
+  }
+}
+
+const opArgs = () => [$('opStrategy').value || 'covered', $('opUniverse').value || 'liquid'];
+$('opscanBtn').addEventListener('click', () => {
+  if (!$('opscanSection').hidden) return ($('opscanSection').hidden = true);
+  loadOpscan(...opArgs());
+});
+$('opRefresh').addEventListener('click', () => loadOpscan(...opArgs()));
+$('opStrategy').addEventListener('change', () => loadOpscan(...opArgs()));
+$('opUniverse').addEventListener('change', () => loadOpscan(...opArgs()));
+$('opscanBody').addEventListener('click', (e) => {
   const row = e.target.closest('[data-sym]');
   if (!row) return;
   $('symbol').value = row.dataset.sym;

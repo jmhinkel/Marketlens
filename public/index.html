@@ -24,6 +24,7 @@
     <select id="timeframe"></select>
     <button id="run" class="primary">Analyze</button>
     <button id="scanBtn" class="secondary">Find setups</button>
+    <button id="opscanBtn" class="secondary">Find contracts</button>
     <button id="lock" class="secondary" title="Sign out" hidden>Lock</button>
   </div>
 </header>
@@ -51,6 +52,21 @@
       </div>
     </div>
     <div id="scanBody"></div>
+  </div>
+</section>
+
+<section id="opscanSection" class="scan-wrap" hidden>
+  <div class="card">
+    <div class="card-head">
+      <h3>Mispriced contracts</h3>
+      <div class="scan-controls">
+        <select id="opStrategy"></select>
+        <select id="opUniverse"></select>
+        <button id="opRefresh" class="secondary">Refresh</button>
+        <span id="opMeta" class="muted small"></span>
+      </div>
+    </div>
+    <div id="opscanBody"></div>
   </div>
 </section>
 

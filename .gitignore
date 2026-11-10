@@ -3,3 +3,6 @@ node_modules/
 .netlify/
 scratch_*
 setup-targets.html
+
+# Local preview config for the Claude Code browser pane
+.claude/

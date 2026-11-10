@@ -333,3 +333,70 @@ main[hidden] { display: none; }
 
 /* strikes statistically tied with the top pick */
 .cc-table tr.tied td { background: rgba(90,169,255,.045); }
+
+/* ---------- options opportunity scanner ---------- */
+/* The valuation pair is the whole point of the card, so it gets the visual
+   weight and everything else sits subordinate to it. */
+
+.oc-intro { color: var(--muted); font-size: 13px; line-height: 1.6; margin: 0 0 14px; }
+.oc-list { display: grid; gap: 12px; }
+
+.oc {
+  border: 1px solid var(--line); border-radius: 10px; padding: 14px;
+  background: var(--panel-2); cursor: pointer; transition: border-color .15s;
+}
+.oc:hover { border-color: var(--accent); }
+
+.oc-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.oc-sym { font-family: ui-monospace, Consolas, monospace; font-weight: 700; font-size: 16px; color: var(--accent); }
+.oc-strike { font-family: ui-monospace, Consolas, monospace; font-size: 15px; font-weight: 600; }
+.oc-exp, .oc-spot { color: var(--muted); font-size: 12px; }
+.oc-spot { margin-left: auto; }
+
+.oc-val {
+  display: flex; gap: 22px; align-items: baseline; flex-wrap: wrap;
+  padding: 10px 12px; margin-bottom: 10px;
+  background: rgba(90,169,255,.06); border-radius: 8px;
+}
+.oc-val-row { display: flex; flex-direction: column; gap: 2px; }
+.oc-val-row .k { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+.oc-val-row .v { font-family: ui-monospace, Consolas, monospace; font-size: 15px; font-weight: 600; }
+.oc-val-row .v.big { font-size: 19px; }
+.oc-val-row.edge { margin-left: auto; text-align: right; }
+.oc-val-row.edge .v { font-size: 21px; font-weight: 700; }
+.oc-val-row.edge .k { color: inherit; opacity: .75; }
+
+.oc-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+  gap: 8px 14px; margin-bottom: 10px;
+}
+.oc-grid > div { display: flex; flex-direction: column; gap: 1px; }
+.oc-grid .k { color: var(--muted); font-size: 11px; }
+.oc-grid .v { font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+
+.oc-vol { color: var(--muted); font-size: 12px; line-height: 1.5; }
+.oc-vol b { color: var(--text); font-family: ui-monospace, Consolas, monospace; }
+
+.oc-event {
+  margin-top: 10px; padding: 9px 11px; font-size: 12px; line-height: 1.55;
+  border-left: 3px solid var(--warn); border-radius: 0 6px 6px 0;
+  background: rgba(224,164,88,.09); color: var(--muted);
+}
+.oc-event b { color: var(--warn); }
+
+.oc-held { margin-top: 22px; padding-top: 16px; border-top: 1px dashed var(--line); }
+.oc-held h4 { margin: 0 0 6px; font-size: 14px; color: var(--warn); }
+.oc-held > p { margin: 0 0 12px; line-height: 1.6; }
+.oc-held .oc { border-color: rgba(224,164,88,.3); }
+
+.oc-screened { margin-top: 12px; }
+.oc-screened summary { cursor: pointer; color: var(--accent); font-size: 12px; }
+.oc-screened ul { margin: 8px 0 0; padding-left: 18px; columns: 2; column-gap: 24px; }
+.oc-screened li { font-size: 11px; line-height: 1.6; margin-bottom: 3px; break-inside: avoid; }
+.oc-screened b { font-family: ui-monospace, Consolas, monospace; color: var(--text); }
+
+@media (max-width: 720px) {
+  .oc-val { gap: 14px; }
+  .oc-val-row.edge { margin-left: 0; text-align: left; }
+  .oc-screened ul { columns: 1; }
+}
