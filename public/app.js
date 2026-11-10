@@ -490,8 +490,9 @@ function renderCovered(d) {
 
   const gate = [
     ['Implied vol', v.impliedVol == null ? '—' : `${v.impliedVol}%`],
-    ['Realized vol', v.realizedVol == null ? '—' : `${v.realizedVol}%`],
-    ['IV / RV', v.ratio == null ? '—' : v.ratio.toFixed(2)],
+    ['Forecast vol', v.forecastVol == null ? '—' : `${v.forecastVol}%`],
+    ['Trailing vol', v.realizedVol == null ? '—' : `${v.realizedVol}%`],
+    ['IV / forecast', v.ratio == null ? '—' : v.ratio.toFixed(2)],
     ['Expected move', em ? `±${em.oneSigmaPct.toFixed(1)}%` : '—'],
   ];
   if (v.volIndex) gate.push([v.volIndex.label, `${v.volIndex.value} · ${ordinal(v.volIndex.percentile)} pct`]);
@@ -871,8 +872,9 @@ function renderPuts(d) {
 
   const gate = [
     ['Implied vol', v.impliedVol == null ? '—' : `${v.impliedVol}%`],
-    ['Realized vol', v.realizedVol == null ? '—' : `${v.realizedVol}%`],
-    ['IV / RV', v.ratio == null ? '—' : v.ratio.toFixed(2)],
+    ['Forecast vol', v.forecastVol == null ? '—' : `${v.forecastVol}%`],
+    ['Trailing vol', v.realizedVol == null ? '—' : `${v.realizedVol}%`],
+    ['IV / forecast', v.ratio == null ? '—' : v.ratio.toFixed(2)],
     ['Expected move', em ? `±${em.oneSigmaPct.toFixed(1)}%` : '—'],
   ];
   if (d.skew) gate.push(['Put skew', `${d.skew.skewPoints > 0 ? '+' : ''}${d.skew.skewPoints} pts`]);
@@ -1004,8 +1006,9 @@ function renderLongCalls(d) {
     v.ratio == null ? '—' : v.ratio >= 1.25 ? 'expensive' : v.ratio >= 1.05 ? 'slightly rich' : 'cheap';
   const gate = [
     ['Implied vol', v.impliedVol == null ? '—' : `${v.impliedVol}%`],
-    ['Realized vol', v.realizedVol == null ? '—' : `${v.realizedVol}%`],
-    ['IV / RV — to a buyer', v.ratio == null ? '—' : `${v.ratio.toFixed(2)} · ${ratioVerdict}`],
+    ['Forecast vol', v.forecastVol == null ? '—' : `${v.forecastVol}%`],
+    ['Trailing vol', v.realizedVol == null ? '—' : `${v.realizedVol}%`],
+    ['IV / forecast — to a buyer', v.ratio == null ? '—' : `${v.ratio.toFixed(2)} · ${ratioVerdict}`],
     ['Expected move', em ? `±${em.oneSigmaPct.toFixed(1)}%` : '—'],
   ];
   if (d.thesis?.target) gate.push(['Chart target', fmt(d.thesis.target, 2)]);

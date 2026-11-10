@@ -72,9 +72,11 @@ effectively the asset itself (IBIT against BTC-USD), not a real relationship.
 (keyless, and it ships delta/gamma/theta/vega and IV per contract). Three questions
 in order:
 
-- **Is premium worth selling?** Implied vol against realised vol, measured with
-  both close-to-close and Parkinson estimators over a window matched to the
-  option's tenor. If IV is at or below RV the panel says so and returns
+- **Is premium worth selling?** Implied vol against a *forecast* of the vol
+  over the option's life - not the trailing reading, which the calibration test
+  showed runs about 19% low and flatters premium exactly when markets are calm
+  and about to stop being. Trailing vol is still shown beside it. If IV is at
+  or below the forecast the panel says so and returns
   *unfavourable* regardless of how good the strikes look - that is a
   negative-expectancy starting point.
 - **Does this fight our own read?** If the chart engine has a confirmed bullish
@@ -121,9 +123,9 @@ notional.
 premium buying and premium selling are different trades and nearly every test
 inverts:
 
-- **The volatility gate reverses.** A seller wants implied above realised; a
-  buyer wants it at or below. Paying 45 vol for an asset that delivers 30 means
-  being right on direction and still losing.
+- **The volatility gate reverses.** A seller wants implied above the forecast;
+  a buyer wants it at or below. Paying 45 vol for an asset expected to deliver
+  30 means being right on direction and still losing.
 - **You pay the ask**, not the bid. On a wide market that gap is the largest
   single cost in the trade, so every number here is quoted off the ask.
 - **Time is the enemy.** Theta is shown as a daily percentage bleed, and a
@@ -374,8 +376,16 @@ findings, two of which killed a design:
 **1. Current realised vol is a biased forecast.** Over 10,914 decision points
 forward vol arrived at 1.195x the current-vol blend, and 1.39x in the quietest
 quintile. Every IV-versus-RV screener that compares implied to *current*
-realised - including this app's own three panels - overstates the variance risk
-premium. Correcting it cut calibration error from 4.15 to 2.16 points.
+realised overstates the variance risk premium. Correcting it cut calibration
+error from 4.15 to 2.16 points.
+
+This finding was serious enough that the three per-symbol panels were rebuilt
+on the corrected forecast too — they had the same flaw. GLD is the clearest
+example of what it cost: trailing vol 17.1% against implied 23.0% read as
+**1.34x, rich, sell premium**, while the forecast of 22.9% reads **1.00x,
+cheap, do not**. Gold had simply been quiet, and quiet mean-reverts upward. The
+panels now show implied, forecast and trailing side by side, and say so
+explicitly when the forecast overrules the trailing reading.
 
 **2. The empirical distribution's fat tails are worth almost nothing.** Per
 strike it calibrates at 4.00 points against 4.20 for a plain lognormal at the
@@ -476,11 +486,11 @@ These are real, and the UI states them rather than papering over them:
   Earnings are now caught by the term-structure detector in the contract
   scanner, but only when the premium is large enough to show; the three
   per-symbol panels have no such guard at all.
-- **The contract scanner's three panels and the scanner itself will disagree.**
-  That is intended. The panels compare implied volatility to *current* realised
-  vol, which the calibration test showed overstates the variance risk premium
-  by around 19%. The scanner uses the corrected forecast. Where they conflict,
-  the scanner has the measurement behind it.
+- **Implied volatility is compared to a forecast, not to trailing realised
+  vol.** Everything in the app now uses the corrected forecast - the three
+  per-symbol panels as well as the scanner - so they agree with each other.
+  Where the forecast disagrees with the trailing number about whether premium
+  is worth selling, the panel says so and shows both figures.
 - Yahoo is an unofficial endpoint. It can rate-limit; the app caches for 15
   minutes (1 minute for intraday) to stay well inside its tolerance.
 
