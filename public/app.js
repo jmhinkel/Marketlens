@@ -272,12 +272,14 @@ function render(a) {
   renderContributions(a);
   renderInvalidation(a);
   $('chartLegend').innerHTML = window.MarketChart.chartLegend(a);
+  projection = null;
   window.MarketChart.drawChart($('chart'), a);
   $('chartNote').textContent =
     `Formations are searched over the ${a.technical.view.bars.length} most recent bars; indicators use the full ` +
     `${a.barCount}-bar history. Only the highest-confidence formation is drawn.`;
   $('narrative').innerHTML = '';
   // Chain fetch runs behind the main render so the chart is never held up by it.
+  loadProjection(a.symbol, a.timeframe);
   loadCovered(a.symbol);
   loadPuts(a.symbol);
   loadLongCalls(a.symbol);
@@ -390,7 +392,13 @@ $('presets').addEventListener('click', (e) => {
 let resizeTimer = null;
 window.addEventListener('resize', () => {
   clearTimeout(resizeTimer);
-  resizeTimer = setTimeout(() => { if (current) window.MarketChart.drawChart($('chart'), current); }, 120);
+  resizeTimer = setTimeout(() => {
+    if (!current) return;
+    window.MarketChart.drawChart($('chart'), current, projection);
+    if (projection?.available && $('projChart')) {
+      window.MarketChart.drawProjectionChart($('projChart'), current, projection);
+    }
+  }, 120);
 });
 
 // ---------- boot ----------
@@ -674,6 +682,144 @@ $('scanBody').addEventListener('click', (e) => {
   analyze();
   document.getElementById('main').scrollIntoView({ behavior: 'smooth' });
 });
+
+// ---------- forward projection ----------
+//
+// The hardest part of this panel is not the numbers, it is refusing to imply a
+// direction. A cone on a chart is enormously persuasive, and the measurement
+// behind it says only how far price might travel, never which way. So the
+// candles are monochrome, the median is labelled as a consequence of skew
+// rather than a forecast, and the finding that nothing predicts direction is
+// stated on the panel rather than buried in a footnote.
+
+let projection = null;
+
+function renderSignal(s) {
+  const h = s.history;
+  if (!h) return `<li><b>${s.name}</b> — no historical detector for this one.</li>`;
+  if (h.tooThin) {
+    return `<li><b>${s.name}</b> — only ${h.instances} prior instances on this asset,
+      too few to say anything about what follows.</li>`;
+  }
+  const verdict = h.significant
+    ? `<span style="color:var(--warn)">measurably different (t ${h.tEff})</span>`
+    : `<span class="muted">no measurable edge (t ${h.tEff})</span>`;
+  return `<li>
+      <b>${s.name}</b> — fired ${h.instances} times on this asset
+      (${h.effectiveN} independent). Price averaged
+      <b>${signed(h.meanForwardPct, 2)}%</b> over the next ${projection.horizonBars} bars against a
+      <b>${signed(h.baselinePct, 2)}%</b> baseline, up ${h.upRate}% of the time — ${verdict}.
+    </li>`;
+}
+
+function renderProjection(p) {
+  $('projStamp').textContent = p.available
+    ? `${p.horizonBars} bars ahead · ${p.distribution.historyYears}y of history · ${p.distribution.effectiveN} independent observations`
+    : '';
+
+  if (!p.available) {
+    $('projection').innerHTML = `<div class="empty">${p.reason}</div>`;
+    return;
+  }
+
+  const band = p.bandPct;
+  const odds = p.levelOdds.length
+    ? `<table class="cc-table proj-tbl">
+         <thead><tr><th>Level</th><th>Price</th><th>Away</th><th>Touched</th><th>Closes beyond</th></tr></thead>
+         <tbody>${p.levelOdds.map((l) => `
+           <tr>
+             <td>${l.label}</td>
+             <td>${fmt(l.price, 2)}</td>
+             <td class="${l.distancePct > 0 ? 'good' : ''}">${signed(l.distancePct, 1)}%</td>
+             <td><b>${l.touchPct}%</b></td>
+             <td class="muted">${l.closeBeyondPct}%</td>
+           </tr>`).join('')}</tbody>
+       </table>`
+    : '';
+
+  const medianDrift = p.steps.at(-1).medianPct;
+  const meanDrift = p.steps.at(-1).meanPct;
+
+  $('projection').innerHTML = `
+    <canvas id="projChart" class="proj-chart"></canvas>
+    <div class="proj-legend muted small">
+      <span><i class="sw sw-body"></i> middle 50% of outcomes</span>
+      <span><i class="sw sw-wick"></i> middle 80%</span>
+      <span><i class="sw sw-med"></i> median</span>
+    </div>
+    <div class="proj-band">
+      <div><span class="k">80% of outcomes</span><span class="v">${signed(band.p10, 1)}% to ${signed(band.p90, 1)}%</span></div>
+      <div><span class="k">50% of outcomes</span><span class="v">${signed(band.p25, 1)}% to ${signed(band.p75, 1)}%</span></div>
+      <div><span class="k">Volatility used</span><span class="v">${p.volForecast.forecast}%</span></div>
+      <div><span class="k">Distribution skew</span><span class="v">${p.skew ?? '—'}</span></div>
+    </div>
+
+    <p class="proj-note">
+      <b>This is a range, not a forecast.</b> ${p.direction.note}
+    </p>
+
+    <p class="proj-note muted">
+      Each projected candle is a summary of where price could be on that date — body covering the middle
+      50% of outcomes, wicks the middle 80% — not a predicted bar. The cone comes from this asset's own
+      return distribution, rescaled to a ${p.volForecast.forecast}% volatility forecast and carried at the
+      ${p.driftAnnualPct}% risk-free rate. That same distribution was calibrated out of sample for the
+      contract scanner, so its width has been checked against what actually happened rather than assumed.
+      ${p.skew != null && Math.abs(p.skew) > 0.3
+        ? `Skew is ${p.skew}, so the cone is deliberately lopsided: ${p.skew < 0
+            ? 'the downside tail is longer than the upside, which is the normal shape for equities'
+            : 'the upside tail is longer than the downside'}.`
+        : ''}
+      ${Math.abs(medianDrift - meanDrift) > 0.15
+        ? `The median line ends ${signed(medianDrift, 1)}% from spot while the mean ends ${signed(meanDrift, 1)}% —
+           that gap is the skew, not a view. More small moves one way, paid for by rarer large moves the other.`
+        : ''}
+      ${p.distribution.volScaleClamped
+        ? ' The volatility rescaling hit its limit here, so the shape is being stretched further than the history really supports — read the width as approximate.'
+        : ''}
+      ${!p.calibratedTimeframe
+        ? ' <b>Note:</b> the volatility forecast was fitted on daily bars. On this timeframe it is extrapolated, not measured.'
+        : ''}
+    </p>
+
+    ${odds ? `<h4 class="proj-h">Odds of reaching each level within ${p.horizonBars} bars</h4>
+      <p class="proj-note muted">From ${p.pathSamples.toLocaleString()} historical paths replayed at today's volatility, using each
+        bar's high and low — a level traded through intraday counts as touched. "Touched" is what matters for a
+        stop or a short strike; "closes beyond" is what matters for a target.</p>
+      ${odds}` : ''}
+
+    ${p.signals.length
+      ? `<h4 class="proj-h">Candlestick signals on the last bar</h4>
+         <ul class="proj-signals">${p.signals.map(renderSignal).join('')}</ul>
+         <p class="proj-note muted">Measured on this asset's own history. Across the full core universe —
+           roughly 65,000 decision bars — no candlestick signal shifted the mean forward return by even one
+           standard error once overlapping windows were accounted for. Treat these as descriptions of the
+           last bar, not predictions of the next one.</p>`
+      : `<p class="proj-note muted">No candlestick signal on the last bar. Worth knowing: across the core
+           universe none of them showed a measurable directional edge anyway.</p>`}`;
+}
+
+async function loadProjection(symbol, timeframe) {
+  $('projection').innerHTML = '<div class="empty"><span class="spin"></span>Building the projection…</div>';
+  try {
+    const res = await fetch(
+      `/api/projection?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}`
+    );
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Projection failed');
+    projection = data;
+    renderProjection(data);
+    // Repaint the main chart now that there is a cone to draw on it, and fill
+    // the close-up inside the panel.
+    if (current) {
+      window.MarketChart.drawChart($('chart'), current, data);
+      if (data.available && $('projChart')) {
+        window.MarketChart.drawProjectionChart($('projChart'), current, data);
+      }
+    }
+  } catch (err) {
+    $('projection').innerHTML = `<div class="empty" style="color:var(--bear)">${err.message}</div>`;
+  }
+}
 
 // ---------- options opportunity scan ----------
 //

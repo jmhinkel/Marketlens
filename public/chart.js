@@ -20,6 +20,13 @@ const COLORS = {
   level: '#8792a8',
   pole: '#b48ce8',
   channel: 'rgba(180,140,232,0.75)',
+  // The projection is deliberately monochrome. Colouring a cone by its median
+  // would read as a forecast of direction, which is the one thing it is not.
+  coneBand: 'rgba(135,146,168,0.10)',
+  coneBody: 'rgba(135,146,168,0.42)',
+  coneWick: 'rgba(135,146,168,0.55)',
+  coneMedian: 'rgba(216,222,233,0.75)',
+  coneEdge: 'rgba(135,146,168,0.5)',
 };
 
 function niceTicks(min, max, count = 6) {
@@ -51,11 +58,15 @@ function fmtDate(ms, timeframe) {
   return d.toLocaleDateString(undefined, { month: 'short', year: '2-digit' });
 }
 
-function drawChart(canvas, analysis) {
+function drawChart(canvas, analysis, projection = null) {
   const t = analysis.technical;
   const view = t.view;
   const bars = view.bars;
   if (!bars?.length) return;
+
+  // Projected steps share the bar index space, continuing past the last real
+  // bar, so the same x() maps both without any realignment.
+  const proj = projection?.available ? projection.steps : null;
 
   const dpr = window.devicePixelRatio || 1;
   const cssW = canvas.clientWidth;
@@ -74,8 +85,11 @@ function drawChart(canvas, analysis) {
   const priceH = cssH - padT - padB - volH - 8;
 
   const n = bars.length;
+  // The drawing width covers history plus the projection, so adding a cone
+  // squeezes the candles slightly rather than running off the right edge.
+  const nTotal = n + (proj?.length ?? 0);
   const plotW = cssW - padL - padR;
-  const bw = plotW / n;
+  const bw = plotW / nTotal;
 
   // --- price range, widened to include anything we are about to draw on it
   let lo = Math.min(...bars.map((b) => b.low));
@@ -96,6 +110,9 @@ function drawChart(canvas, analysis) {
   }
   for (const l of t.levels || []) consider(l.price);
   if (t.channel) { consider(t.channel.top); consider(t.channel.bottom); }
+  // Make room for the cone, or its outer band gets clipped and the projection
+  // looks narrower than it is - which would understate the risk on screen.
+  if (proj) for (const s of proj) { consider(s.p05); consider(s.p95); }
 
   const pad = (hi - lo) * 0.06;
   lo -= pad;
@@ -185,6 +202,59 @@ function drawChart(canvas, analysis) {
     const h = Math.max(1, Math.abs(yc - yo));
     ctx.fillStyle = up ? COLORS.up : COLORS.down;
     ctx.fillRect(cx - body / 2, top, body, h);
+  }
+
+  // --- projection
+  //
+  // Drawn as candles because that is the shape the eye already reads, but each
+  // one is a QUANTILE SUMMARY of where price could be on that date, not a
+  // predicted bar: body spans the 25th-75th percentile, wicks the 10th-90th.
+  // Deliberately rendered in a single neutral colour rather than green/red -
+  // colouring them by the median against spot would read as a direction call,
+  // and the conditioning study found nothing that predicts direction.
+  if (proj) {
+    // Soft fill between the 10th and 90th so the cone reads as one object.
+    ctx.fillStyle = COLORS.coneBand;
+    ctx.beginPath();
+    ctx.moveTo(x(n - 1), y(bars[n - 1].close));
+    for (const s of proj) ctx.lineTo(x(n - 1 + s.step), y(s.p90));
+    for (let i = proj.length - 1; i >= 0; i--) ctx.lineTo(x(n - 1 + proj[i].step), y(proj[i].p10));
+    ctx.closePath();
+    ctx.fill();
+
+    // The boundary between history and projection.
+    const splitX = Math.round(x(n - 1) + bw / 2) + 0.5;
+    ctx.save();
+    ctx.setLineDash([3, 3]);
+    ctx.strokeStyle = COLORS.coneEdge;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(splitX, padT);
+    ctx.lineTo(splitX, padT + priceH);
+    ctx.stroke();
+    ctx.restore();
+
+    for (const s of proj) {
+      const cx = x(n - 1 + s.step);
+      ctx.strokeStyle = COLORS.coneWick;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(Math.round(cx) + 0.5, y(s.p90));
+      ctx.lineTo(Math.round(cx) + 0.5, y(s.p10));
+      ctx.stroke();
+
+      const top = y(s.p75);
+      const h = Math.max(1, y(s.p25) - y(s.p75));
+      ctx.fillStyle = COLORS.coneBody;
+      ctx.fillRect(cx - body / 2, top, body, h);
+
+      // Median tick. Thin, and left uncoloured - see the note above.
+      ctx.strokeStyle = COLORS.coneMedian;
+      ctx.beginPath();
+      ctx.moveTo(cx - body / 2, Math.round(y(s.p50)) + 0.5);
+      ctx.lineTo(cx + body / 2, Math.round(y(s.p50)) + 0.5);
+      ctx.stroke();
+    }
   }
 
   // --- horizontal support / resistance
@@ -309,4 +379,127 @@ function chartLegend(analysis) {
   return items.map(([label, color]) => `<span><i style="background:${color}"></i>${label}</span>`).join('');
 }
 
-window.MarketChart = { drawChart, chartLegend };
+// A close-up of just the handover: the last stretch of real bars and the
+// projected ones beside them at a width where each is actually legible.
+//
+// The main chart shows 320 bars, which squeezes a 21-step projection into a
+// grey fan about two pixels wide per step. That is honest but useless - the
+// whole point of drawing a projection as candles is that you can read one. So
+// this draws the junction at a usable scale, and nothing else.
+function drawProjectionChart(canvas, analysis, projection) {
+  if (!projection?.available || !projection.steps?.length) return;
+  const all = analysis.technical.view.bars;
+  if (!all?.length) return;
+
+  const steps = projection.steps;
+  // Roughly as much history as projection, so the eye has a reference for how
+  // wide the cone is against bars it has already seen.
+  const hist = all.slice(-Math.max(12, Math.min(40, steps.length * 2)));
+
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = canvas.clientWidth;
+  const cssH = canvas.clientHeight;
+  if (!cssW || !cssH) return;
+  canvas.width = cssW * dpr;
+  canvas.height = cssH * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cssW, cssH);
+
+  const padL = 8;
+  const padR = 60;
+  const padT = 10;
+  const padB = 20;
+  const plotH = cssH - padT - padB;
+  const total = hist.length + steps.length;
+  const plotW = cssW - padL - padR;
+  const bw = plotW / total;
+
+  let lo = Math.min(...hist.map((b) => b.low), ...steps.map((s) => s.p05));
+  let hi = Math.max(...hist.map((b) => b.high), ...steps.map((s) => s.p95));
+  const pad = (hi - lo) * 0.07;
+  lo -= pad;
+  hi += pad;
+
+  const x = (i) => padL + (i + 0.5) * bw;
+  const y = (p) => padT + plotH - ((p - lo) / (hi - lo)) * plotH;
+
+  ctx.font = '10px ui-monospace, Consolas, monospace';
+  ctx.textBaseline = 'middle';
+  for (const tick of niceTicks(lo, hi, 5)) {
+    const py = y(tick);
+    ctx.strokeStyle = COLORS.grid;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(padL, Math.round(py) + 0.5);
+    ctx.lineTo(cssW - padR, Math.round(py) + 0.5);
+    ctx.stroke();
+    ctx.fillStyle = COLORS.axis;
+    ctx.textAlign = 'left';
+    ctx.fillText(fmtPrice(tick), cssW - padR + 6, py);
+  }
+
+  const body = Math.max(2, Math.min(bw * 0.7, 16));
+
+  for (let i = 0; i < hist.length; i++) {
+    const b = hist[i];
+    const up = b.close >= b.open;
+    const cx = x(i);
+    ctx.strokeStyle = up ? COLORS.wickUp : COLORS.wickDown;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(Math.round(cx) + 0.5, y(b.high));
+    ctx.lineTo(Math.round(cx) + 0.5, y(b.low));
+    ctx.stroke();
+    const top = Math.min(y(b.open), y(b.close));
+    const h = Math.max(1, Math.abs(y(b.close) - y(b.open)));
+    ctx.fillStyle = up ? COLORS.up : COLORS.down;
+    ctx.fillRect(cx - body / 2, top, body, h);
+  }
+
+  const base = hist.length - 1;
+
+  ctx.fillStyle = COLORS.coneBand;
+  ctx.beginPath();
+  ctx.moveTo(x(base), y(hist.at(-1).close));
+  for (const s of steps) ctx.lineTo(x(base + s.step), y(s.p90));
+  for (let i = steps.length - 1; i >= 0; i--) ctx.lineTo(x(base + steps[i].step), y(steps[i].p10));
+  ctx.closePath();
+  ctx.fill();
+
+  const splitX = Math.round(x(base) + bw / 2) + 0.5;
+  ctx.save();
+  ctx.setLineDash([3, 3]);
+  ctx.strokeStyle = COLORS.coneEdge;
+  ctx.beginPath();
+  ctx.moveTo(splitX, padT);
+  ctx.lineTo(splitX, padT + plotH);
+  ctx.stroke();
+  ctx.restore();
+
+  for (const s of steps) {
+    const cx = x(base + s.step);
+    ctx.strokeStyle = COLORS.coneWick;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(Math.round(cx) + 0.5, y(s.p90));
+    ctx.lineTo(Math.round(cx) + 0.5, y(s.p10));
+    ctx.stroke();
+
+    ctx.fillStyle = COLORS.coneBody;
+    ctx.fillRect(cx - body / 2, y(s.p75), body, Math.max(1, y(s.p25) - y(s.p75)));
+
+    ctx.strokeStyle = COLORS.coneMedian;
+    ctx.beginPath();
+    ctx.moveTo(cx - body / 2, Math.round(y(s.p50)) + 0.5);
+    ctx.lineTo(cx + body / 2, Math.round(y(s.p50)) + 0.5);
+    ctx.stroke();
+  }
+
+  ctx.fillStyle = COLORS.axis;
+  ctx.textAlign = 'center';
+  ctx.fillText('today', splitX, cssH - padB / 2);
+  ctx.fillText(`+${steps.length}`, x(base + steps.length), cssH - padB / 2);
+}
+
+window.MarketChart = { drawChart, drawProjectionChart, chartLegend };

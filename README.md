@@ -176,11 +176,18 @@ two of its own design errors before shipping. It also carries the app's first
 earnings guard, read out of the chain's implied-volatility term structure
 rather than a calendar feed. Full account below.
 
-**8. Composite.** Technical and macro scores are blended by timeframe. On a
+**8. Forward projection.** A cone of where price could be over the next ~21
+bars, drawn as candlesticks: each projected candle's body covers the middle 50%
+of outcomes and its wicks the middle 80%. It is a range, not a forecast, and
+the centre is deliberately flat — see below for the measurement that forced
+that. Plus the odds of touching each of the engine's own levels within the
+horizon, from replayed historical paths.
+
+**9. Composite.** Technical and macro scores are blended by timeframe. On a
 5-minute chart macro carries 5%; on a monthly chart it carries 65%. Agreement
 between the two lenses is reported rather than averaged away.
 
-**9. Written briefing (optional).** Every number is computed before the model
+**10. Written briefing (optional).** Every number is computed before the model
 sees it - it explains the reading and adds named real-world context, flagged as
 background knowledge rather than live reporting, and is instructed never to
 invent a level.
@@ -459,6 +466,55 @@ This catches event premium large enough to stand out of the term structure, not
 every scheduled event. Singles run a median kink of 1.27x and broad ETFs 1.16x,
 so the populations overlap and a small earnings premium passes through.
 
+## The projection: why its centre is flat
+
+`/api/projection`. The obvious version of this feature predicts the next
+candles. This app has now measured the direction question twice and got the
+same answer both times, so it does not.
+
+`node tools/measure-conditioning.mjs [universe] [stepBars]` tests every
+condition a projection might plausibly tilt on, across ~65,000 decision bars,
+and scores each on two axes that are usually conflated:
+
+- **Location** — does it tell you which WAY price goes?
+- **Scale and skew** — does it tell you HOW FAR, in either direction?
+
+| condition | best &#124;t&#124; (corrected) | scale ratio | skew range |
+|---|---|---|---|
+| Candlestick signal | 0.32 | 1.25x | 2.03 |
+| RSI band | 1.22 | 1.23x | 1.38 |
+| Trend strength (ADX) | 1.15 | 1.04x | 1.51 |
+| Bollinger width | 0.57 | 1.15x | 1.77 |
+| Moving-average stack | 0.33 | 1.25x | 0.27 |
+| Recent 5-bar move | 0.92 | 1.37x | 2.05 |
+
+**Not one reaches |t| = 2 on location.** The raw t-statistics look far better —
+RSI > 70 scores 5.5 — but consecutive samples share 19 of their 20 forward
+bars, so the honest sample is n/20 and every raw t divides by about 4.5. That
+correction is the entire difference between "signal" and "noise" here, and it
+is why the raw numbers are not the ones reported.
+
+Shape is a different story: scale ratios reach 1.37x and skew swings over two
+full units. A sharp fall is followed by a distribution that is both wider and
+markedly more left-skewed while its mean sits unmoved. So the cone's width and
+lopsidedness are conditioned, and its centre is not.
+
+The distribution is the same object the contract scanner prices options with —
+the asset's own returns, rescaled to the fitted volatility forecast, drifted at
+the risk-free rate — so the cone inherits that module's out-of-sample
+calibration rather than asserting its own.
+
+Two presentation decisions follow from the measurement. The candles are
+monochrome, because colouring them by the median against spot would read as a
+direction call. And the median is labelled: on SPY it ends about 0.9% above
+spot while the mean ends at 0.3%, and that gap is the left skew, not a view —
+more small gains than large ones, paid for by rarer large falls.
+
+Candlestick signals are still detected and shown, with what they did on that
+asset's own history attached. The answer is almost always "nothing
+distinguishable", and the effective sample is printed so it is obvious when a
+tempting-looking number rests on eleven observations.
+
 ## Known limits
 
 These are real, and the UI states them rather than papering over them:
@@ -520,6 +576,7 @@ lib/
   options/covered.js   call strike scoring, thesis conflict check, panel verdict
   options/puts.js      put strike scoring, assignment-basis test, skew read
   options/longcalls.js premium-buying: inverted vol gate, breakeven vs target
+  projection.js        forward cone, level-touch odds, candle-signal history
   scan.js              universe definitions, setup scoring, long/short ranking
   ta/indicators.js     SMA/EMA/RSI/MACD/ATR/Bollinger/ADX/correlation/linreg
   ta/structure.js      pivots, swing structure, S/R, trendlines, channels, volume profile
@@ -528,6 +585,7 @@ lib/
   macro/profiles.js    asset classification and per-class factor weights + signs
   macro/factors.js     factor readings from market and economic data
   macro/macro.js       correlation-adjusted weighting and macro score
+  tools/measure-conditioning.mjs does anything predict direction? (no)
   tools/validate-expectancy.mjs  out-of-sample calibration of the valuer
   tools/fit-volforecast.mjs      fits the forward-vol forecast, train/test split
   tools/backtest-setups.mjs      walk-forward test of the setup score
