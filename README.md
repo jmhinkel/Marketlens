@@ -515,6 +515,82 @@ asset's own history attached. The answer is almost always "nothing
 distinguishable", and the effective sample is printed so it is obvious when a
 tempting-looking number rests on eleven observations.
 
+## The options feed moved, and the greeks are now ours
+
+In November 2026 CBOE moved its public delayed-quote feed to `cdn-api.cboe.com`
+and put Cloudflare bot protection in front of it. `fetch` follows the redirect,
+the new host answers 403 with an HTML challenge page, and the app was mapping
+403 to "no listed options" — a choice that made sense when 403 was how CBOE
+answered for futures and FX. The result: the contract scanner reported
+"44 scanned, 0 passed" with a confident, individually plausible reason for every
+exclusion, and every reason was false. SPY was listed as having no options. It
+sat like that for two weeks.
+
+The lesson is the one already in this repo about broken links: **an upstream
+refusal and a genuine negative must never produce the same message.** 404 still
+means NO_OPTIONS. A 403, or any HTML body from an endpoint that only returns
+JSON, is now `FEED_BLOCKED`, and the UI prints one honest outage banner instead
+of forty-four excuses.
+
+### Nasdaq, with Black-Scholes filling the gap
+
+The replacement is Nasdaq's public chain JSON — keyless, and measured at ~750ms
+per symbol, so a 44-symbol scan still finishes in about 5 seconds. What it does
+not carry is implied volatility or greeks, and every piece of options analysis
+here is built on IV. So IV is inverted from the mid price and the greeks follow
+from it (`lib/options/blackscholes.js`).
+
+That is less of a change than it sounds: CBOE was inverting the same formula and
+handing over the answer. What genuinely changes is that the assumptions are now
+ours, and stated — European exercise, no dividend yield, mid-price input. Exact
+for calls on non-payers, slightly off for deep ITM puts on dividend payers,
+which the panels rarely trade.
+
+`node tools/validate-greeks.mjs` checks it: a round trip across 672
+price/vol/tenor combinations, put-call parity to 5.7e-14, all four greeks
+against numerical derivatives, and Hull's textbook values. One behaviour worth
+knowing: a contract whose price is all intrinsic carries **no recoverable
+volatility** — every vol from 0.01% to 200% prices it identically — so the
+solver returns null rather than a confident number that is pure artefact of
+where the search started.
+
+Two bugs the migration surfaced, both found by checking rather than assuming:
+
+- **Nasdaq's drill-down URLs don't have a fixed separator.** SPY gives
+  `spy---261201c...`, NVDA gives `nvda--261125c...`, because the root is padded
+  to constant width. Splitting on `---` works for three-letter symbols and
+  silently returns nothing for four-letter ones, so NVDA came back as having no
+  options while SPY was fine. The date code is now matched at the end of the
+  string.
+- **Nasdaq truncates to `limit` rows ordered by expiry**, so an undersized limit
+  doesn't thin the chain evenly — it drops the far expiries. At limit 1200, SPY
+  returned only its first 6 expiries, all inside 17 days, and `pickExpiry`
+  cheerfully "found" an 8-day contract for a 35-day target.
+
+### The event detector had to be recalibrated
+
+Nasdaq lists daily expiries; CBOE did not. The extra granularity broke the
+earnings detector in both directions — two-day forward-vol intervals are very
+noisy, and thin expiries give bad ATM readings that forward variance magnifies.
+On the first run it flagged SPY, GLD, IWM, XLF and TLT, all broad ETFs with no
+issuer event, four of them keyed on the same thinly-quoted expiry.
+
+Re-derived the same way the original threshold was — sweep, and find where
+single names separate from ETFs:
+
+| min gap | depth floor | singles max | ETF max | separable |
+|---|---|---|---|---|
+| 2 days | 35% of median | 1.65x | 1.89x | no |
+| 3 days | 50% | 1.89x | 1.93x | no |
+| **4 days** | **50%** | **1.73x** | **1.50x** | **yes** |
+| 5 days | 50% | 1.73x | 1.30x | yes |
+
+At a four-day minimum gap and a depth floor of half the chain's median, AVGO
+flags at 1.73x — it reports inside the flagged window — against a worst ETF of
+1.50x. The cost, stated: four-day intervals can't resolve a tightly-bracketed
+event as sharply as before. Worth it, because a detector that fires on SPY every
+month is one nobody reads.
+
 ## Known limits
 
 These are real, and the UI states them rather than papering over them:
@@ -529,8 +605,12 @@ These are real, and the UI states them rather than papering over them:
 - **For FX, only the US leg of the rate differential is measured.**
 - **Single stocks carry no company-specific input** — no earnings, guidance or
   litigation. The macro read is backdrop, not thesis.
-- **Options quotes are delayed ~15 minutes.** Fine for choosing a strike, useless
-  for timing a fill.
+- **Options quotes are end-of-session, not 15-minute delayed.** The Nasdaq feed
+  that replaced CBOE lags by a session on many symbols. Fine for choosing a
+  strike, useless for timing a fill. Spot always comes from Yahoo, not from the
+  options feed, so the underlying price is current even when the chain is not.
+- **Implied volatility and greeks are computed, not quoted** — see the feed
+  section above for the assumptions and the validation.
 - **Historical breach rates are unconditional.** They pool every regime in the
   asset's history, so they are a base rate rather than a forecast. On a trending
   underlying they run well above what delta implies - that gap is the point, but
@@ -567,10 +647,13 @@ lib/
   cache.js             TTL cache
   data/yahoo.js        OHLCV, daily closes, symbol search
   data/fred.js         FRED series + keyless Treasury curve fallback
-  data/cboe.js         options chains with greeks, proxy map for unlisted assets
+  data/chains.js       which options feed is current, plus the proxy map
+  data/nasdaq.js       current chain source; IV and greeks derived, not quoted
+  data/cboe.js         previous chain source, unreachable since Nov 2026
   data/rates.js        short risk-free rate, the drift assumption for valuation
   options/vol.js       realised vol, IV/RV, expected move, historical breach,
                        fitted forward-vol forecast, term-structure event detector
+  options/blackscholes.js  pricing, IV inversion, greeks
   options/expectancy.js  empirical fair value: distribution, EV, tail risk
   options/opscan.js    contract scanner - hard gates, then EV ranking
   options/covered.js   call strike scoring, thesis conflict check, panel verdict
@@ -585,6 +668,7 @@ lib/
   macro/profiles.js    asset classification and per-class factor weights + signs
   macro/factors.js     factor readings from market and economic data
   macro/macro.js       correlation-adjusted weighting and macro score
+  tools/validate-greeks.mjs      round-trip, parity and greek checks
   tools/measure-conditioning.mjs does anything predict direction? (no)
   tools/validate-expectancy.mjs  out-of-sample calibration of the valuer
   tools/fit-volforecast.mjs      fits the forward-vol forecast, train/test split

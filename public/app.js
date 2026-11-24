@@ -967,6 +967,15 @@ function renderOpscan(d) {
     <div class="oc-list">${list(d.results)}</div>
     ${events}
     <p class="scan-foot">
+      ${d.greeksDerived
+        ? `<b>Implied volatility and greeks are computed here, not quoted.</b> The CBOE feed that
+           supplied them went behind bot protection in November 2026; the replacement carries prices,
+           open interest and volume but no vol and no greeks, so IV is inverted from the mid price with
+           Black-Scholes and delta follows from it. The assumptions are European exercise and no
+           dividend yield, which is exact for calls on non-payers and slightly off for deep in-the-money
+           puts on dividend payers. A contract whose price is all intrinsic carries no recoverable
+           volatility and is dropped rather than given a made-up number.<br><br>`
+        : ''}
       <b>What would make this wrong.</b> ${d.caveat}
       The volatility forecast is unconditional on events, so the term-structure check above is the only earnings
       guard and it catches event premium large enough to stand out of the term structure, not every scheduled
