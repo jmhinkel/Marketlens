@@ -430,3 +430,12 @@ main[hidden] { display: none; }
 .sw-body { width: 10px; height: 12px; background: rgba(135,146,168,.42); }
 .sw-wick { width: 3px; height: 14px; background: rgba(135,146,168,.55); }
 .sw-med { width: 12px; height: 2px; background: rgba(216,222,233,.75); }
+
+/* An upstream outage must not look like an empty result. */
+.feed-down {
+  padding: 14px 16px; border-radius: 8px;
+  border: 1px solid rgba(240,101,93,.35); border-left: 3px solid var(--bear);
+  background: rgba(240,101,93,.07);
+}
+.feed-down b { color: var(--bear); display: block; margin-bottom: 6px; }
+.feed-down p { margin: 0 0 6px; font-size: 12.5px; line-height: 1.6; }

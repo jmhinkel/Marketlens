@@ -463,9 +463,22 @@ function ccScoreColor(s) {
   return 'var(--bear)';
 }
 
+// An upstream outage is not an empty result, and it should not look like one.
+// When the feed is refusing requests every option panel would otherwise render
+// a blank table, which reads as "nothing to see here" rather than "this is
+// broken and here is why".
+function feedDownHtml(d) {
+  return `<div class="feed-down">
+      <b>Options feed unavailable.</b>
+      <p>${d.reason}</p>
+      <p class="muted">${d.hint || ''}</p>
+    </div>`;
+}
+
 function renderProxies(d) {
   $('ccExpiry').hidden = true;
   $('ccStamp').textContent = '';
+  if (d.feedDown) { $('covered').innerHTML = feedDownHtml(d); return; }
   if (!d.proxies?.length) {
     $('covered').innerHTML = `<div class="empty">${d.reason} ${d.hint || ''}</div>`;
     return;
@@ -904,8 +917,19 @@ function renderContract(x, side) {
 }
 
 function renderOpscan(d) {
-  $('opMeta').textContent =
-    `${d.scanned} symbols · ${d.passed} with positive edge · ${(d.elapsedMs / 1000).toFixed(1)}s`;
+  $('opMeta').textContent = d.feedDown
+    ? 'feed unavailable'
+    : `${d.scanned} symbols · ${d.passed} with positive edge · ${(d.elapsedMs / 1000).toFixed(1)}s`;
+
+  // Say it once, at the top, instead of letting the reader infer an outage
+  // from forty-four individually plausible excuses.
+  if (d.feedDown) {
+    $('opscanBody').innerHTML = `<div class="feed-down">
+        <b>Options feed unavailable.</b>
+        <p>${d.feedMessage}</p>
+      </div>`;
+    return;
+  }
 
   const list = (rows) =>
     rows.length
@@ -990,6 +1014,7 @@ let putData = null;
 function renderPutProxies(d) {
   $('putExpiry').hidden = true;
   $('putStamp').textContent = '';
+  if (d.feedDown) { $('puts').innerHTML = feedDownHtml(d); return; }
   if (!d.proxies?.length) {
     $('puts').innerHTML = `<div class="empty">${d.reason} ${d.hint || ''}</div>`;
     return;
@@ -1121,6 +1146,7 @@ let lcData = null;
 function renderLcProxies(d) {
   $('lcExpiry').hidden = true;
   $('lcStamp').textContent = '';
+  if (d.feedDown) { $('longcalls').innerHTML = feedDownHtml(d); return; }
   if (!d.proxies?.length) {
     $('longcalls').innerHTML = `<div class="empty">${d.reason} ${d.hint || ''}</div>`;
     return;
